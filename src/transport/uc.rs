@@ -23,6 +23,9 @@ pub fn build<'res>(
         .create_qp(cq, cq, ibverbs::ibv_qp_type::IBV_QPT_UC)
         .set_max_send_wr(tx_depth as u32)
         .set_max_recv_wr(tx_depth as u32)
+        // See the matching comment in `transport/rc.rs`: D3OS always reports a GID, so the local
+        // side needs a gid_index configured to interoperate.
+        .set_gid_index(0)
         .build()?;
     Ok(prepared)
 }
