@@ -43,9 +43,10 @@ ordering.
 `bench::supported()` is the authority on this matrix and is checked during the handshake, so an
 unimplemented combination is rejected before any RDMA resources are built.
 
-**None of it has been run yet.** Everything after the initial RC bandwidth commit was written on
-a machine without `libibverbs`, so it has never been compiled or executed. Getting a loopback run
-green is the next step, ahead of writing more benchmark code.
+All six RC and UC combinations have been run between `ib1` and `ib2` on real hardware (Mellanox
+ConnectX-3), against the code as committed — no fixes were needed after the first hardware run.
+Note that the development machine has no `libibverbs`, so changes made there cannot be compiled
+locally; ib1/ib2 are where anything new gets built and exercised.
 
 UD is blocked on the verbs binding rather than on this crate: rust-ibverbs 0.9.2 has no real UD
 support (`handshake()` applies RC/UC `dest_qp_num`/`ah_attr` logic unconditionally, there is no
