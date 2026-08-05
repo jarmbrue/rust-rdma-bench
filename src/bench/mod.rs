@@ -20,7 +20,9 @@ pub enum Role {
 pub fn supported(transport: Transport, mode: Mode) -> bool {
     matches!(
         (transport, mode),
-        (Transport::Rc, Mode::Bandwidth) | (Transport::Rc, Mode::Latency)
+        (Transport::Rc, Mode::Bandwidth)
+            | (Transport::Rc, Mode::Latency)
+            | (Transport::Rc, Mode::Accuracy)
     )
 }
 
