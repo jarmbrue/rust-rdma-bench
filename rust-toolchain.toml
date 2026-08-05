@@ -1,0 +1,5 @@
+[toolchain]
+# Pinned to the same nightly D3OS uses (see ../D3OS/rust-toolchain.toml), so
+# this crate and its D3OS-side twin are built with the same compiler.
+channel = "nightly-2026-01-01"
+components = ["rustfmt", "clippy"]
