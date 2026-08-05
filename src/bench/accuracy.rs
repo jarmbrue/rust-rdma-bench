@@ -12,25 +12,20 @@
 //! Anything the client sent but the server never saw counts as fully incorrect, so the reported
 //! accuracy covers loss as well as corruption. Because loss is the expected case here, the server
 //! cannot wait for a fixed number of messages: it stops once no completion has arrived for
-//! `DRAIN_TIMEOUT` and treats whatever is still missing as lost.
+//! `bench::IDLE_TIMEOUT` and treats whatever is still missing as lost.
 
-use super::{Role, completion_error};
+use super::{IDLE_TIMEOUT, Role, completion_error};
 use crate::comm::Conn;
 use crate::error::Result;
 use ibverbs::{CompletionQueue, MemoryRegion, ProtectionDomain, QueuePair, ibv_wc};
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Bytes at the front of every message holding its sequence number, little endian. The receiver
 /// reads it to know which message it is looking at, since messages can arrive out of order or not
 /// at all.
 const HEADER_LEN: usize = 8;
-
-/// How long the receiver keeps polling after the last completion before it declares the run over
-/// and everything still missing lost. Generous enough that a briefly stalled sender is not
-/// mistaken for the end of the stream.
-const DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// What the receiver observed, sent back over the out-of-band connection so the client — the side
 /// the user actually watches — can print the result.
@@ -204,7 +199,7 @@ fn receive(
             batch.push((c.wr_id() as usize, c.len()));
         }
         if batch.is_empty() {
-            if last_progress.elapsed() >= DRAIN_TIMEOUT {
+            if last_progress.elapsed() >= IDLE_TIMEOUT {
                 break;
             }
             continue;

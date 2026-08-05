@@ -41,12 +41,22 @@ fn receive(
     let mut wc = vec![ibv_wc::default(); tx_depth.max(1)];
 
     conn.sync()?; // "ready"
+    // On UC a dropped message produces no completion at all, so this cannot wait for a fixed
+    // count — it drains until the stream goes quiet and reports the shortfall.
+    let mut last_progress = Instant::now();
     while completed < iterations {
         let completions = cq.poll(&mut wc)?;
         let n = completions.len();
         for c in completions.iter() {
             completion_error(c)?;
         }
+        if n == 0 {
+            if last_progress.elapsed() >= super::IDLE_TIMEOUT {
+                break;
+            }
+            continue;
+        }
+        last_progress = Instant::now();
         completed += n;
         for _ in 0..n {
             if posted < iterations {
@@ -56,7 +66,14 @@ fn receive(
         }
     }
     conn.sync()?; // "done draining"
-    println!("received {completed} messages");
+    if completed < iterations {
+        println!(
+            "received {completed} of {iterations} messages ({} never arrived)",
+            iterations - completed
+        );
+    } else {
+        println!("received {completed} messages");
+    }
     Ok(())
 }
 

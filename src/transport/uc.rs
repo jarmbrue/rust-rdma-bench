@@ -1,16 +1,28 @@
-//! UC transport: not yet implemented.
+//! UC transport.
 //!
-//! `QueuePairBuilder::build`/`handshake` in rust-ibverbs 0.8.1 support UC in principle (the
-//! RC/UC-gated setters in `ibverbs::QueuePairBuilder` already branch on `IBV_QPT_UC`), but the
-//! benchmark-side plumbing (transport dispatch, wire protocol) hasn't been wired up for it yet.
+//! Building the queue pair is the same shape as RC — `QueuePairBuilder` already gates every
+//! RC-only attribute on `qp_type`, so `handshake()` moves a UC queue pair through INIT/RTR/RTS
+//! with exactly the attribute mask UC requires (no timeout, retry count, RNR timer or atomic
+//! depth, which are all RC-only and would be rejected).
+//!
+//! What differs is the traffic: UC acknowledges nothing and retransmits nothing, so a message the
+//! fabric drops is gone silently, with no completion on either side to mark it. Every benchmark
+//! that waits on a peer therefore has to bound that wait — see `bench::IDLE_TIMEOUT`.
 
 use crate::error::Result;
 use ibverbs::{CompletionQueue, PreparedQueuePair, ProtectionDomain};
 
+/// Builds a UC queue pair with the given send/receive depth, ready to be handed a remote endpoint
+/// via `PreparedQueuePair::handshake`.
 pub fn build<'res>(
-    _pd: &'res ProtectionDomain<'res>,
-    _cq: &'res CompletionQueue<'res>,
-    _tx_depth: usize,
+    pd: &'res ProtectionDomain<'res>,
+    cq: &'res CompletionQueue<'res>,
+    tx_depth: usize,
 ) -> Result<PreparedQueuePair<'res>> {
-    unimplemented!("UC transport not yet implemented")
+    let prepared = pd
+        .create_qp(cq, cq, ibverbs::ibv_qp_type::IBV_QPT_UC)
+        .set_max_send_wr(tx_depth as u32)
+        .set_max_recv_wr(tx_depth as u32)
+        .build()?;
+    Ok(prepared)
 }

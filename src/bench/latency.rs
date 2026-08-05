@@ -7,8 +7,14 @@
 //!
 //! This is deliberately stop-and-wait: exactly one message is in flight in each direction at any
 //! time, so `--tx-depth` does not apply here and is ignored.
+//!
+//! Over UC either half of a round trip can vanish without a trace, which would otherwise leave
+//! both sides waiting forever, so each wait is bounded by `bench::IDLE_TIMEOUT`. A round trip that
+//! hits the bound is counted as lost and contributes no timing sample. Note that a very late echo
+//! can still be picked up by a subsequent iteration's wait and time that one too short; with loss
+//! rare enough for the latency figures to mean anything, so is this.
 
-use super::{Role, completion_error};
+use super::{IDLE_TIMEOUT, Role, completion_error};
 use crate::comm::Conn;
 use crate::error::Result;
 use ibverbs::{CompletionQueue, MemoryRegion, ProtectionDomain, QueuePair, ibv_wc};
@@ -53,17 +59,24 @@ pub fn run(
 }
 
 /// Polls until a completion has been seen for every `wr_id` in `want` (a bitmask of `WR_SEND` /
-/// `WR_RECV`). Busy-polls without blocking, which is the point: a completion-channel wakeup would
-/// add far more delay than the latency being measured.
-fn wait_for(cq: &CompletionQueue, wc: &mut [ibv_wc], want: u64) -> Result<()> {
+/// `WR_RECV`), or until `IDLE_TIMEOUT` passes with nothing outstanding arriving. Returns the
+/// subset of `want` that never showed up, so an empty return means the whole wait was satisfied.
+///
+/// Busy-polls without blocking, which is the point: a completion-channel wakeup would add far more
+/// delay than the latency being measured.
+fn wait_for(cq: &CompletionQueue, wc: &mut [ibv_wc], want: u64) -> Result<u64> {
     let mut pending = want;
+    let deadline = Instant::now() + IDLE_TIMEOUT;
     while pending != 0 {
         for c in cq.poll(wc)?.iter() {
             completion_error(c)?;
             pending &= !c.wr_id();
         }
+        if pending != 0 && Instant::now() >= deadline {
+            break;
+        }
     }
-    Ok(())
+    Ok(pending)
 }
 
 /// Client side: sends a message, waits for the echo, records the round trip.
@@ -86,7 +99,20 @@ fn ping(
     for i in 0..iterations {
         let t0 = Instant::now();
         unsafe { qp.post_send(send_mr, .., WR_SEND)? };
-        wait_for(cq, &mut wc, WR_SEND | WR_RECV)?;
+        // A timeout means a full IDLE_TIMEOUT of silence, which on any working link means the
+        // echoing side has stopped rather than that this one message was unlucky — and the server
+        // stops on the same condition. Pushing on would just time out every remaining iteration
+        // in turn, so both sides give up together and the rest is reported as skipped.
+        if wait_for(cq, &mut wc, WR_SEND | WR_RECV)? != 0 {
+            println!(
+                "round trip {} timed out after {:?}; {} of {} iterations skipped",
+                i,
+                IDLE_TIMEOUT,
+                iterations - i,
+                iterations
+            );
+            break;
+        }
         samples.push(t0.elapsed().as_secs_f64() * 1e6 / 2.0); // µs, half round trip
 
         // Repost before the next send, so the next echo can never arrive without a receive
@@ -97,6 +123,9 @@ fn ping(
     }
 
     conn.sync()?; // both sides done
+    if samples.is_empty() {
+        return Err("no round trip completed; nothing to report".into());
+    }
     report(&mut samples, msg_size);
     Ok(())
 }
@@ -111,23 +140,28 @@ fn pong(
     iterations: usize,
 ) -> Result<()> {
     let mut wc = [ibv_wc::default(); 2];
+    let mut echoed = 0usize;
 
     unsafe { qp.post_receive(recv_mr, .., WR_RECV)? };
     conn.sync()?; // both sides have a receive posted
 
-    for i in 0..iterations {
-        wait_for(cq, &mut wc, WR_RECV)?;
-        // Repost ahead of the echo: the client's next ping follows immediately on the echo, and
-        // there must already be a receive queued for it.
-        if i + 1 < iterations {
-            unsafe { qp.post_receive(recv_mr, .., WR_RECV)? };
+    for _ in 0..iterations {
+        // A ping that never arrives means the client has either given up on that iteration or
+        // finished the run; either way there is nothing left to echo.
+        if wait_for(cq, &mut wc, WR_RECV)? != 0 {
+            break;
         }
+        // Repost ahead of the echo: the client's next ping follows immediately on the echo, and
+        // there must already be a receive queued for it. Doing so on the last iteration too just
+        // leaves one unused work request behind on a queue pair that is about to be torn down.
+        unsafe { qp.post_receive(recv_mr, .., WR_RECV)? };
         unsafe { qp.post_send(send_mr, .., WR_SEND)? };
         wait_for(cq, &mut wc, WR_SEND)?;
+        echoed += 1;
     }
 
     conn.sync()?; // both sides done
-    println!("echoed {iterations} messages");
+    println!("echoed {echoed} of {iterations} messages");
     Ok(())
 }
 

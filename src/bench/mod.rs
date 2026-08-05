@@ -6,6 +6,16 @@ use crate::cli::{Mode, Transport};
 use crate::comm::Conn;
 use crate::error::Result;
 use ibverbs::{CompletionQueue, ProtectionDomain, QueuePair, ibv_wc};
+use std::time::Duration;
+
+/// How long a poll loop keeps spinning without seeing a completion before it gives up and treats
+/// whatever it was waiting for as lost.
+///
+/// Unreliable transports drop messages silently: nothing tells the receiver that a message it is
+/// waiting for is never coming, so any loop that waits on the peer needs a backstop or a single
+/// dropped message hangs the run. Deliberately far longer than any real inter-message gap, so it
+/// only ever fires on actual loss (or, on RC, on a hang that would otherwise be permanent).
+pub const IDLE_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Which side of the benchmark connection this process is playing.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -17,13 +27,13 @@ pub enum Role {
 /// Whether `(transport, mode)` has an actual implementation, as opposed to a stub. Checked
 /// before any RDMA resources are built for a connection, so an unsupported combination can be
 /// rejected cleanly instead of failing partway through setup.
-pub fn supported(transport: Transport, mode: Mode) -> bool {
-    matches!(
-        (transport, mode),
-        (Transport::Rc, Mode::Bandwidth)
-            | (Transport::Rc, Mode::Latency)
-            | (Transport::Rc, Mode::Accuracy)
-    )
+pub fn supported(transport: Transport, _mode: Mode) -> bool {
+    match transport {
+        // Every mode works over both connected transports: the benchmarks are written to tolerate
+        // the loss UC allows, so none of them needs RC's guarantees.
+        Transport::Rc | Transport::Uc => true,
+        Transport::Ud => false,
+    }
 }
 
 /// Turns a failed work completion into an error; successful ones pass through.
