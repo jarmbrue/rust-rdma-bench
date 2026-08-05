@@ -35,13 +35,11 @@ pub fn run(args: ClientArgs) -> Result<()> {
         endpoint: local_endpoint,
     })?;
 
-    let mut mr = pd.allocate::<u8>(args.size)?;
-
     bench::run(
         args.mode,
+        &pd,
         &cq,
         &mut qp,
-        &mut mr,
         &mut conn,
         Role::Client,
         args.size,

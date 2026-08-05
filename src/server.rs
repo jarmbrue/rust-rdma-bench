@@ -48,13 +48,12 @@ fn handle_connection(ctx: &Context, pd: &ProtectionDomain, conn: &mut Conn) -> R
         endpoint: remote_endpoint,
     } = conn.recv_json()?;
     let mut qp = prepared.handshake(remote_endpoint)?;
-    let mut mr = pd.allocate::<u8>(req.msg_size)?;
 
     bench::run(
         req.mode,
+        pd,
         &cq,
         &mut qp,
-        &mut mr,
         conn,
         Role::Server,
         req.msg_size,

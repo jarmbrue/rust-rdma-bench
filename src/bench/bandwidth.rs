@@ -1,30 +1,27 @@
-use super::Role;
+use super::{Role, completion_error};
 use crate::comm::Conn;
 use crate::error::Result;
-use ibverbs::{ibv_wc, CompletionQueue, MemoryRegion, QueuePair};
+use ibverbs::{CompletionQueue, MemoryRegion, ProtectionDomain, QueuePair, ibv_wc};
 use std::time::Instant;
 
 pub fn run(
+    pd: &ProtectionDomain,
     cq: &CompletionQueue,
     qp: &mut QueuePair,
-    mr: &mut MemoryRegion<u8>,
     conn: &mut Conn,
     role: Role,
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
 ) -> Result<()> {
-    match role {
-        Role::Server => receive(cq, qp, mr, conn, iterations, tx_depth),
-        Role::Client => send(cq, qp, mr, conn, msg_size, iterations, tx_depth),
-    }
-}
+    // One buffer reused for every work request: this only measures throughput, so the messages
+    // don't need distinct payloads.
+    let mut mr = pd.allocate::<u8>(msg_size)?;
 
-fn completion_error(wc: &ibv_wc) -> Result<()> {
-    if let Some((status, vendor_err)) = wc.error() {
-        return Err(format!("WC error: {status:?} vendor_err={vendor_err}").into());
+    match role {
+        Role::Server => receive(cq, qp, &mut mr, conn, iterations, tx_depth),
+        Role::Client => send(cq, qp, &mut mr, conn, msg_size, iterations, tx_depth),
     }
-    Ok(())
 }
 
 fn receive(
