@@ -12,10 +12,15 @@ processes, as a proof that the whole pipeline (device setup, OOB handshake, QP h
 send/recv, completion polling, throughput reporting) actually works. Everything else is a clearly
 labeled stub for later.
 
-`rust-ibverbs` is targeted at version `0.8.1` (matching the `../rust-ibverbs` checkout's tag)
-because that's the version D3OS's own RDMA library mirrors — using anything newer here would
-immediately create API drift between the two thesis implementations. The dependency is pulled from
-**crates.io** (`ibverbs = "0.8.1"`), not as a path dependency on the local `../rust-ibverbs`
+`rust-ibverbs` is targeted at version `0.9.2` (D3OS's own RDMA library was updated to mirror this
+version too, so the two thesis implementations stay in step). An earlier draft of this plan pinned
+`0.8.1` to match D3OS at the time; that version's `ibverbs-sys` build failed on Linux because its
+vendored `rdma-core`'s CMake build derives a Unix-domain-socket path (`ibacm`'s) from
+`CMAKE_INSTALL_PREFIX`, which `cmake-rs` defaults to Cargo's `OUT_DIR` — a path long enough, nested
+under a project's `target/` dir, to exceed `sockaddr_un.sun_path`'s 108-byte limit and fail a
+`BUILD_ASSERT`. `0.9.2` fixes this upstream by hardcoding `CMAKE_INSTALL_PREFIX=/usr` during the
+(build-only, nothing is actually installed) CMake invocation. The dependency is pulled from
+**crates.io** (`ibverbs = "0.9.2"`), not as a path dependency on the local `../rust-ibverbs`
 checkout — that local checkout has its own uncommitted local modifications (its vendored
 `rdma-core` submodule shows as modified in `git status`) and is meant purely as reading/reference
 material for this thesis, not something this crate should build against directly.
@@ -29,9 +34,10 @@ below uses them (a `--tx-depth` flag), rather than being forced into stop-and-wa
 `ProtectionDomain::create_qp`, which is fine since the setters cover what's needed.)
 
 UD is deferred entirely: `handshake()` unconditionally applies RC/UC-style `dest_qp_num`/`ah_attr`
-logic even for UD (`lib.rs:1092-1117`, comment literally says "TODO: this is only valid for RC and
-UC"), there's no `AddressHandle`/`ibv_create_ah` wrapper, and `post_send` has no per-send AH param.
-`transport::ud` is a stub carrying this rationale in a doc comment, not an implementation attempt.
+logic even for UD (`lib.rs:1199-1201` in 0.9.2, comment literally says "TODO: this is only valid
+for RC and UC"), there's no `AddressHandle`/`ibv_create_ah` wrapper, and `post_send` has no
+per-send AH param — still true as of 0.9.2. `transport::ud` is a stub carrying this rationale in a
+doc comment, not an implementation attempt.
 
 **Server/client asymmetry**: the server doesn't know in advance what transport/mode/size/iteration
 count a client wants to test — and requiring matching CLI flags on both sides is fragile and
@@ -53,7 +59,7 @@ compatible JSON (de)serializer later to interoperate.
 
 ```toml
 [dependencies]
-ibverbs = "0.8.1"
+ibverbs = "0.9.2"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
