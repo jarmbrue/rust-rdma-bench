@@ -108,6 +108,11 @@ There is no test suite — `cargo test` compiles but runs nothing, and nothing h
 except by running the two binaries against each other on ib1/ib2. Treat "it builds" as the weakest
 possible signal and say so when reporting.
 
+From the macOS development machine, `docker compose run --rm dev cargo build` compiles the crate in
+the Linux container defined by `docker/Dockerfile` — the only way to type-check a change here,
+since macOS has no verbs. It cannot benchmark: Docker Desktop's kernel exposes no RDMA device. See
+`docker/README.md`.
+
 The toolchain is pinned in `rust-toolchain.toml` to the same nightly D3OS uses, so this crate and
 its D3OS-side twin are built with the same compiler; bump the two together, not one alone.
 

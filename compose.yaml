@@ -1,0 +1,49 @@
+# Two containers on one network, so a server and a client can be run against each other the same
+# way they are on ib1/ib2. On a Mac they will build but not benchmark -- Docker Desktop's kernel
+# exposes no RDMA device. See docker/README.md.
+
+x-bench: &bench
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  image: rust-rdma-bench:dev
+  volumes:
+    - .:/work
+    # Named volumes, not bind mounts: Linux build artifacts stay out of the host's ./target, and
+    # the registry cache survives container restarts so only changed crates are recompiled.
+    - cargo-registry:/usr/local/cargo/registry
+    - build-target:/build/target
+  # Memory registration pins pages, which needs an unlimited memlock rlimit and CAP_IPC_LOCK.
+  # Harmless where there is no RDMA device; required wherever there is one.
+  cap_add:
+    - IPC_LOCK
+  ulimits:
+    memlock: -1
+  # /dev/infiniband is deliberately *not* mapped here: Docker refuses to start a container whose
+  # device path does not exist, which would make this file unusable on a Mac. On a host that has
+  # RDMA devices, add compose.rdma.yaml on top -- see docker/README.md.
+  stdin_open: true
+  tty: true
+
+services:
+  # Interactive shell for building, `cargo clippy`, etc. Started by default.
+  dev:
+    <<: *bench
+    command: /bin/bash
+
+  # `docker compose run --rm server` / `... run --rm client --host server ...`
+  server:
+    <<: *bench
+    profiles: [bench]
+    entrypoint: ["cargo", "run", "--", "server"]
+    command: ["--listen"]
+
+  client:
+    <<: *bench
+    profiles: [bench]
+    entrypoint: ["cargo", "run", "--", "client"]
+    command: ["--host", "server"]
+
+volumes:
+  cargo-registry:
+  build-target:

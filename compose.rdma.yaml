@@ -1,0 +1,19 @@
+# Overlay for hosts that actually have RDMA devices (ib1/ib2, or a Linux VM with rdma_rxe or siw
+# loaded). Passes the verbs character devices through to the containers:
+#
+#   docker compose -f compose.yaml -f compose.rdma.yaml run --rm dev ibv_devices
+#
+# Kept separate from compose.yaml because Docker refuses to start a container that maps a device
+# path the host does not have, which is every Mac.
+
+x-rdma: &rdma
+  devices:
+    - /dev/infiniband:/dev/infiniband
+
+services:
+  dev:
+    <<: *rdma
+  server:
+    <<: *rdma
+  client:
+    <<: *rdma
