@@ -66,19 +66,58 @@ The D3OS counterpart (`D3OS/os/application/rdma-bench`) does not exist yet.
 - `src/bench/{bandwidth,latency,accuracy}.rs` — the measurement loops, each allocating its own
   memory regions since buffer count is a per-benchmark concern.
 - `src/{client,server}.rs` — resource setup and handshake driving for each role.
+- `docs/plan.md` — the design write-up the crate was built from; carries the rationale for the
+  ibverbs version pin and the UD deferral in more depth than this file.
+
+## How a run is wired up
+
+The client picks every parameter; the server only obeys. One TCP connection carries the whole
+control plane as newline-delimited JSON, in a fixed order:
+
+1. client → `BenchmarkRequest` (transport, mode, size, iterations, tx_depth).
+2. server checks `bench::supported()`, then either replies `HandshakeAck::Unsupported` and drops
+   the connection, or builds its CQ/QP and replies `HandshakeAck::Ok { endpoint }`.
+3. client transitions its QP with the server's endpoint, then sends `ClientEndpoint` back; the
+   server transitions with that.
+4. both sides call `bench::run()` with the same parameters and their own `Role`.
+
+Note the asymmetry: the server allocates its CQ per connection (sized from the client's
+`tx_depth`) while the client allocates once up front, and the server builds its QP *after* seeing
+the request. `--listen` makes the server loop over connections; a failed run is reported and the
+loop continues.
+
+Inside a benchmark, `Conn::sync()` is the only thing keeping the two sides in step (e.g. receives
+must be posted before the sender starts). The calls are positional and must stay paired one-to-one
+across the client and server halves — an unmatched `sync()` deadlocks the run rather than failing.
+The same connection then carries results back where the receiving side computed them (accuracy
+sends its `AccuracyReport` to the client, which prints it).
 
 Note `bench::IDLE_TIMEOUT`: on UC a dropped message yields no completion on either side, so every
-poll loop that waits on the peer is bounded by it rather than spinning forever.
+poll loop that waits on the peer is bounded by it rather than spinning forever. Any new
+peer-waiting loop needs the same backstop.
 
 ## Build/run
 
 ```sh
 cargo build
-cargo test
+cargo clippy
+cargo fmt
 ```
 
-Needs `libibverbs` on the host (same as `rust-ibverbs`), plus RDMA-capable hardware or
-`rdma_rxe`/`siw` software RDMA for local testing — see
+There is no test suite — `cargo test` compiles but runs nothing, and nothing here is verified
+except by running the two binaries against each other on ib1/ib2. Treat "it builds" as the weakest
+possible signal and say so when reporting.
+
+The toolchain is pinned in `rust-toolchain.toml` to the same nightly D3OS uses, so this crate and
+its D3OS-side twin are built with the same compiler; bump the two together, not one alone.
+
+The `ibverbs` dependency comes from crates.io, deliberately *not* as a path dependency on
+`../rust-ibverbs` — that checkout has local modifications and is reference material only. It still
+is the place to read when a verbs API question comes up, since it's the same source. Building it
+needs the rdma-core build toolchain (`ibverbs-sys` vendors rdma-core and builds it via CMake, plus
+bindgen/libclang); `shell.nix` sets all of that up, including the include-path workarounds bindgen
+needs on NixOS, so build inside `nix-shell` where a Nix environment is in play. Actually running
+also needs RDMA-capable hardware or `rdma_rxe`/`siw` software RDMA — see
 `../rust-ibverbs/ibverbs/tests/loopback.rs` for the pattern that repo uses.
 
 Server first, then the client, which drives the run and prints the result table:
@@ -90,3 +129,11 @@ cargo run -- client --host <server> --transport uc --mode accuracy --size 4096 -
 
 The `ib1` and `ib2` git remotes are the InfiniBand-equipped test machines; work is pushed to both
 plus `origin` (GitHub) and built/run there.
+
+## Comment style
+
+This is thesis code, so the comments carry the reasoning: module- and item-level doc comments
+explain what a piece measures and why it is shaped that way (see `bench/accuracy.rs`'s header, or
+the doc comment on `IDLE_TIMEOUT`), and inline comments justify non-obvious choices rather than
+restating the code. Match that when adding to it — a new benchmark mode without its "why" reads as
+out of place here.
