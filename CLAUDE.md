@@ -90,7 +90,12 @@ Inside a benchmark, `Conn::sync()` is the only thing keeping the two sides in st
 must be posted before the sender starts). The calls are positional and must stay paired one-to-one
 across the client and server halves — an unmatched `sync()` deadlocks the run rather than failing.
 The same connection then carries results back where the receiving side computed them (accuracy
-sends its `AccuracyReport` to the client, which prints it).
+sends its `AccuracyReport` to the client, which prints it). Each `sync()` takes a label naming the
+barrier; setting `RDMA_BENCH_DEBUG=1` makes both sides print every barrier they reach, pass or fail
+(with how long the wait took), which is how a mispaired-barrier hang gets diagnosed. The label is
+local — it never goes over the wire — so it costs nothing but must still be kept recognisably
+paired with the peer's. Leave the variable unset for real measurements: the tracing writes to
+stderr from inside the timed section.
 
 Note `bench::IDLE_TIMEOUT`: on UC a dropped message yields no completion on either side, so every
 poll loop that waits on the peer is bounded by it rather than spinning forever. Any new

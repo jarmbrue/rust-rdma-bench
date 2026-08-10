@@ -40,7 +40,7 @@ fn receive(
     let mut completed = 0usize;
     let mut wc = vec![ibv_wc::default(); tx_depth.max(1)];
 
-    conn.sync()?; // "ready"
+    conn.sync("bandwidth/receiver: receives posted")?;
     // On UC a dropped message produces no completion at all, so this cannot wait for a fixed
     // count — it drains until the stream goes quiet and reports the shortfall.
     let mut last_progress = Instant::now();
@@ -65,7 +65,7 @@ fn receive(
             }
         }
     }
-    conn.sync()?; // "done draining"
+    conn.sync("bandwidth/receiver: drained")?;
     if completed < iterations {
         println!(
             "received {completed} of {iterations} messages ({} never arrived)",
@@ -88,7 +88,7 @@ fn send(
 ) -> Result<()> {
     let mut wc = vec![ibv_wc::default(); tx_depth.max(1)];
 
-    conn.sync()?; // wait for "ready"
+    conn.sync("bandwidth/sender: waiting for receives posted")?;
     let t0 = Instant::now();
 
     let window = tx_depth.min(iterations);
@@ -112,7 +112,7 @@ fn send(
         }
     }
     let elapsed = t0.elapsed();
-    conn.sync()?;
+    conn.sync("bandwidth/sender: all sends completed")?;
 
     let secs = elapsed.as_secs_f64();
     let bytes = iterations as f64 * msg_size as f64;
