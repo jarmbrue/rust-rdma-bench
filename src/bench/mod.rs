@@ -5,6 +5,7 @@ pub mod latency;
 use crate::cli::{Mode, Transport};
 use crate::comm::Conn;
 use crate::error::Result;
+use crate::report::Report;
 use ibverbs::{CompletionQueue, ProtectionDomain, QueuePair, ibv_wc};
 use std::time::Duration;
 
@@ -44,7 +45,9 @@ pub fn completion_error(wc: &ibv_wc) -> Result<()> {
     Ok(())
 }
 
-/// Runs the benchmark identified by `mode` over an already-handshaked queue pair.
+/// Runs the benchmark identified by `mode` over an already-handshaked queue pair and hands back
+/// what it measured. Nothing here prints: the caller decides whether the numbers become a
+/// standalone table or one row of a sweep (see `crate::report`).
 ///
 /// Memory regions are allocated by the individual benchmark rather than by the caller, because
 /// how many buffers a run needs is a per-benchmark concern: streaming one direction reuses a
@@ -59,7 +62,7 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
-) -> Result<()> {
+) -> Result<Report> {
     match mode {
         Mode::Bandwidth => bandwidth::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),
         Mode::Latency => latency::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),

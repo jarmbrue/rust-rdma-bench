@@ -1,6 +1,7 @@
 use super::{Role, completion_error};
 use crate::comm::Conn;
 use crate::error::Result;
+use crate::report::{BandwidthStats, Report};
 use ibverbs::{CompletionQueue, MemoryRegion, ProtectionDomain, QueuePair, ibv_wc};
 use std::time::Instant;
 
@@ -13,7 +14,7 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
-) -> Result<()> {
+) -> Result<Report> {
     // One buffer reused for every work request: this only measures throughput, so the messages
     // don't need distinct payloads.
     let mut mr = pd.allocate::<u8>(msg_size)?;
@@ -31,7 +32,7 @@ fn receive(
     conn: &mut Conn,
     iterations: usize,
     tx_depth: usize,
-) -> Result<()> {
+) -> Result<Report> {
     let window = tx_depth.min(iterations);
     for i in 0..window {
         unsafe { qp.post_receive(mr, .., i as u64)? };
@@ -74,7 +75,7 @@ fn receive(
     } else {
         println!("received {completed} messages");
     }
-    Ok(())
+    Ok(Report::Peer)
 }
 
 fn send(
@@ -85,7 +86,7 @@ fn send(
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
-) -> Result<()> {
+) -> Result<Report> {
     let mut wc = vec![ibv_wc::default(); tx_depth.max(1)];
 
     conn.sync()?; // wait for "ready"
@@ -114,17 +115,10 @@ fn send(
     let elapsed = t0.elapsed();
     conn.sync()?;
 
-    let secs = elapsed.as_secs_f64();
-    let bytes = iterations as f64 * msg_size as f64;
-    let bw_gbps = bytes * 8.0 / secs / 1e9;
-    let msg_rate_mpps = iterations as f64 / secs / 1e6;
-    println!(
-        "{:>8}  {:>12}  {:>10}  {:>18}  {:>14}",
-        "#bytes", "#iterations", "tx_depth", "BW avg[Gb/sec]", "MsgRate[Mpps]"
-    );
-    println!(
-        "{:>8}  {:>12}  {:>10}  {:>18.2}  {:>14.6}",
-        msg_size, iterations, tx_depth, bw_gbps, msg_rate_mpps
-    );
-    Ok(())
+    Ok(Report::Bandwidth(BandwidthStats {
+        msg_size,
+        iterations,
+        tx_depth,
+        elapsed_us: elapsed.as_micros(),
+    }))
 }

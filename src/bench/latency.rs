@@ -17,6 +17,7 @@
 use super::{IDLE_TIMEOUT, Role, completion_error};
 use crate::comm::Conn;
 use crate::error::Result;
+use crate::report::{LatencyStats, Report};
 use ibverbs::{CompletionQueue, MemoryRegion, ProtectionDomain, QueuePair, ibv_wc};
 use std::time::Instant;
 
@@ -34,7 +35,7 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     _tx_depth: usize,
-) -> Result<()> {
+) -> Result<Report> {
     if iterations == 0 {
         return Err("latency benchmark needs at least one iteration".into());
     }
@@ -88,7 +89,7 @@ fn ping(
     conn: &mut Conn,
     msg_size: usize,
     iterations: usize,
-) -> Result<()> {
+) -> Result<Report> {
     let mut wc = [ibv_wc::default(); 2];
     let mut samples = Vec::with_capacity(iterations);
 
@@ -123,11 +124,11 @@ fn ping(
     }
 
     conn.sync()?; // both sides done
-    if samples.is_empty() {
-        return Err("no round trip completed; nothing to report".into());
-    }
-    report(&mut samples, msg_size);
-    Ok(())
+    // A run where every round trip timed out is a result too — an empty one. Reporting it as such
+    // rather than as an error keeps one dead size from aborting a whole sweep.
+    Ok(Report::Latency(LatencyStats::from_samples(
+        msg_size, &samples,
+    )))
 }
 
 /// Server side: echoes every message back, untimed.
@@ -138,7 +139,7 @@ fn pong(
     recv_mr: &mut MemoryRegion<u8>,
     conn: &mut Conn,
     iterations: usize,
-) -> Result<()> {
+) -> Result<Report> {
     let mut wc = [ibv_wc::default(); 2];
     let mut echoed = 0usize;
 
@@ -162,45 +163,5 @@ fn pong(
 
     conn.sync()?; // both sides done
     println!("echoed {echoed} of {iterations} messages");
-    Ok(())
-}
-
-/// Sorts `samples` in place and prints the usual latency summary. All figures are µs.
-fn report(samples: &mut [f64], msg_size: usize) {
-    samples.sort_by(f64::total_cmp);
-    let n = samples.len();
-
-    let avg = samples.iter().sum::<f64>() / n as f64;
-    let stdev = if n > 1 {
-        (samples.iter().map(|s| (s - avg).powi(2)).sum::<f64>() / (n - 1) as f64).sqrt()
-    } else {
-        0.0
-    };
-    // Nearest-rank percentiles over the sorted samples.
-    let percentile = |p: f64| samples[(((n as f64) * p).ceil() as usize).clamp(1, n) - 1];
-
-    println!(
-        "{:>8}  {:>12}  {:>12}  {:>12}  {:>16}  {:>12}  {:>14}  {:>16}  {:>18}",
-        "#bytes",
-        "#iterations",
-        "t_min[usec]",
-        "t_max[usec]",
-        "t_typical[usec]",
-        "t_avg[usec]",
-        "t_stdev[usec]",
-        "99%[usec]",
-        "99.9%[usec]",
-    );
-    println!(
-        "{:>8}  {:>12}  {:>12.2}  {:>12.2}  {:>16.2}  {:>12.2}  {:>14.2}  {:>16.2}  {:>18.2}",
-        msg_size,
-        n,
-        samples[0],
-        samples[n - 1],
-        percentile(0.50),
-        avg,
-        stdev,
-        percentile(0.99),
-        percentile(0.999),
-    );
+    Ok(Report::Peer)
 }

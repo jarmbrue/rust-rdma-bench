@@ -55,17 +55,27 @@ patching rust-ibverbs or dropping to raw `ffi::` calls here, plus handling the 4
 UD prepends to every received message — which touches accuracy's header parsing and bandwidth's
 byte accounting. See `src/transport/ud.rs` for the details.
 
-The D3OS counterpart (`D3OS/os/application/rdma-bench`) does not exist yet.
+The D3OS counterpart (`D3OS/os/application/rdma-bench`) now exists and is the side that moves
+first: features are written there against the D3OS verbs library and ported back here. **Treat it
+as the master copy** — when the two diverge, this repo is what should change, and the diff between
+them should stay as small as the different backends allow. Anything Linux-only lives here alone
+(clap, `--device`, `std` types); everything else — module layout, wire types, CLI surface, report
+formatting — is expected to match file for file.
 
 ## Layout
 
-- `src/cli.rs` — clap definitions; `Transport`/`Mode` enums are also the wire types.
-- `src/comm.rs` — out-of-band TCP handshake (`BenchmarkRequest`, endpoint exchange) and the
+- `src/cli.rs` — clap definitions; `Transport`/`Mode` enums are also the wire types. `plan()`
+  resolves the optional `--mode`/`--size` lists into the matrix a client run expands to.
+- `src/comm.rs` — the wire types (`BenchmarkRequest`, endpoint exchange, `AccuracyReport`) and the
   `Conn::sync()` barrier both sides use to line up before and after a run.
 - `src/transport/{rc,uc,ud}.rs` — queue-pair construction per transport type.
 - `src/bench/{bandwidth,latency,accuracy}.rs` — the measurement loops, each allocating its own
-  memory regions since buffer count is a per-benchmark concern.
-- `src/{client,server}.rs` — resource setup and handshake driving for each role.
+  memory regions since buffer count is a per-benchmark concern. They return a `Report` and print
+  nothing themselves.
+- `src/report.rs` — `Report`/`BandwidthStats`/`LatencyStats` and all table formatting, kept apart
+  from the benchmarks so a sweep can print one header and a row per size.
+- `src/{client,server}.rs` — resource setup and handshake driving for each role; the client also
+  drives the suite.
 - `docs/plan.md` — the design write-up the crate was built from; carries the rationale for the
   ibverbs version pin and the UD deferral in more depth than this file.
 
@@ -81,10 +91,18 @@ control plane as newline-delimited JSON, in a fixed order:
    server transitions with that.
 4. both sides call `bench::run()` with the same parameters and their own `Role`.
 
-Note the asymmetry: the server allocates its CQ per connection (sized from the client's
-`tx_depth`) while the client allocates once up front, and the server builds its QP *after* seeing
-the request. `--listen` makes the server loop over connections; a failed run is reported and the
+Both sides allocate their CQ and build their QP per connection (the server after seeing the
+request, so it can size the CQ from the client's `tx_depth`); only the device context and PD are
+opened once. `--listen` makes the server loop over connections; a failed run is reported and the
 loop continues.
+
+A client run is a *matrix* of (mode, size) pairs, not necessarily one benchmark: `--mode` and
+`--size` both take comma-separated lists, and left out entirely they mean "all three modes" and
+"every power of two from `--min-size` to `--max-size`". Each pair is an ordinary run on the wire —
+its own connection, CQ and QP, the same handshake — so the server never learns that a suite is
+happening; it just has to be running with `--listen`. `client::run_suite` prints one table per
+mode with a row per size, skips sizes below `Mode::min_msg_size()`, and reports a failing run in
+place rather than aborting the sweep.
 
 Inside a benchmark, `Conn::sync()` is the only thing keeping the two sides in step (e.g. receives
 must be posted before the sender starts). The calls are positional and must stay paired one-to-one
@@ -129,7 +147,10 @@ Server first, then the client, which drives the run and prints the result table:
 
 ```sh
 cargo run -- server --listen
+# one benchmark
 cargo run -- client --host <server> --transport uc --mode accuracy --size 4096 --iterations 10000
+# the whole suite: every mode, every power of two from 8 B to 64 KiB
+cargo run -- client --host <server> --transport uc
 ```
 
 The `ib1` and `ib2` git remotes are the InfiniBand-equipped test machines; work is pushed to both

@@ -15,10 +15,10 @@
 //! `bench::IDLE_TIMEOUT` and treats whatever is still missing as lost.
 
 use super::{IDLE_TIMEOUT, Role, completion_error};
-use crate::comm::Conn;
+use crate::comm::{AccuracyReport, Conn};
 use crate::error::Result;
+use crate::report::Report;
 use ibverbs::{CompletionQueue, MemoryRegion, ProtectionDomain, QueuePair, ibv_wc};
-use serde::{Deserialize, Serialize};
 use std::ops::Range;
 use std::time::Instant;
 
@@ -26,32 +26,6 @@ use std::time::Instant;
 /// reads it to know which message it is looking at, since messages can arrive out of order or not
 /// at all.
 const HEADER_LEN: usize = 8;
-
-/// What the receiver observed, sent back over the out-of-band connection so the client — the side
-/// the user actually watches — can print the result.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct AccuracyReport {
-    pub msg_size: usize,
-    /// Messages the sender was asked to transmit.
-    pub sent: usize,
-    /// Receive completions the server reaped, including duplicates and unidentifiable messages.
-    pub received: usize,
-    /// Sequence numbers that never showed up.
-    pub lost: usize,
-    /// Messages whose sequence number had already been seen.
-    pub duplicated: usize,
-    /// Messages whose header did not hold a sequence number from this run, so they could not be
-    /// attributed to anything and were not checked further.
-    pub unidentifiable: usize,
-    /// Identified messages that arrived shorter than `msg_size`.
-    pub truncated: usize,
-    /// Identified messages that differed from their expected payload in at least one byte.
-    pub corrupted: usize,
-    /// Bytes that arrived exactly as sent, out of the `sent * msg_size` that were sent.
-    pub correct_bytes: u64,
-    /// Bits that arrived exactly as sent, out of the `sent * msg_size * 8` that were sent.
-    pub correct_bits: u64,
-}
 
 pub fn run(
     pd: &ProtectionDomain,
@@ -62,7 +36,7 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
-) -> Result<()> {
+) -> Result<Report> {
     if iterations == 0 {
         return Err("accuracy benchmark needs at least one iteration".into());
     }
@@ -122,7 +96,7 @@ fn send(
     msg_size: usize,
     iterations: usize,
     window: usize,
-) -> Result<()> {
+) -> Result<Report> {
     let mut wc = vec![ibv_wc::default(); window];
 
     conn.sync()?; // wait until the receiver has its receives posted
@@ -153,9 +127,8 @@ fn send(
     }
 
     conn.sync()?; // "everything I was going to send has left the queue"
-    let report: AccuracyReport = conn.recv_json()?;
-    print_report(&report);
-    Ok(())
+    let report: AccuracyReport = conn.recv_msg()?;
+    Ok(Report::Accuracy(report))
 }
 
 /// Server side: checks every arriving message against what its sequence number should have held.
@@ -167,7 +140,7 @@ fn receive(
     msg_size: usize,
     iterations: usize,
     window: usize,
-) -> Result<()> {
+) -> Result<Report> {
     let mut wc = vec![ibv_wc::default(); window];
     for slot in 0..window {
         unsafe { qp.post_receive(mr, slot_range(slot, msg_size), slot as u64)? };
@@ -179,14 +152,7 @@ fn receive(
     let mut report = AccuracyReport {
         msg_size,
         sent: iterations,
-        received: 0,
-        lost: 0,
-        duplicated: 0,
-        unidentifiable: 0,
-        truncated: 0,
-        corrupted: 0,
-        correct_bytes: 0,
-        correct_bits: 0,
+        ..AccuracyReport::default()
     };
 
     let mut last_progress = Instant::now();
@@ -217,12 +183,8 @@ fn receive(
     report.lost = seen.iter().filter(|s| !**s).count();
 
     conn.sync()?; // meets the sender's post-send barrier
-    conn.send_json(&report)?;
-    println!(
-        "checked {} of {} messages, {} lost, {} corrupted",
-        report.received, report.sent, report.lost, report.corrupted
-    );
-    Ok(())
+    conn.send_msg(&report)?;
+    Ok(Report::Peer)
 }
 
 /// Attributes one received message to a sequence number and folds it into `report`. `got` is the
@@ -276,39 +238,4 @@ fn check(
     }
     report.correct_bytes += correct_bytes;
     report.correct_bits += correct_bits;
-}
-
-fn print_report(report: &AccuracyReport) {
-    let total_bytes = (report.sent * report.msg_size) as f64;
-    let byte_acc = report.correct_bytes as f64 / total_bytes * 100.0;
-    let bit_acc = report.correct_bits as f64 / (total_bytes * 8.0) * 100.0;
-
-    println!(
-        "{:>8}  {:>12}  {:>10}  {:>8}  {:>8}  {:>10}  {:>14}  {:>14}",
-        "#bytes",
-        "#iterations",
-        "#received",
-        "#lost",
-        "#dup",
-        "#corrupt",
-        "ByteAcc[%]",
-        "BitAcc[%]",
-    );
-    println!(
-        "{:>8}  {:>12}  {:>10}  {:>8}  {:>8}  {:>10}  {:>14.6}  {:>14.6}",
-        report.msg_size,
-        report.sent,
-        report.received,
-        report.lost,
-        report.duplicated,
-        report.corrupted,
-        byte_acc,
-        bit_acc,
-    );
-    if report.unidentifiable > 0 || report.truncated > 0 {
-        println!(
-            "{} unidentifiable (bad header), {} truncated",
-            report.unidentifiable, report.truncated
-        );
-    }
 }
