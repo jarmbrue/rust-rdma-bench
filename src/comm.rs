@@ -8,6 +8,19 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::OnceLock;
+use std::time::Instant;
+
+/// Whether barrier tracing is on, read once from `RDMA_BENCH_DEBUG`.
+///
+/// An unmatched `sync()` deadlocks the run instead of failing, and the two halves of a benchmark
+/// live in different processes on different machines, so the only way to see which barrier a stuck
+/// run is sitting on is to have both sides announce them. Off by default: the tracing writes to
+/// stderr from inside the measured section, so it must not be on for a real measurement.
+fn trace_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var_os("RDMA_BENCH_DEBUG").is_some_and(|v| v != "0"))
+}
 
 /// Declares the benchmark a client wants to run. Sent by the client as the first message on a
 /// new connection, before either side has built any RDMA resources for that connection.
@@ -96,11 +109,35 @@ impl Conn {
 
     /// A one-byte round trip both sides call at the same logical point, so neither proceeds
     /// past it until the other has reached it too.
-    pub fn sync(&mut self) -> Result<()> {
+    ///
+    /// `label` names the barrier for tracing only; it is not sent over the wire, so the two sides
+    /// need not agree on it — but keeping their labels recognisably paired is what makes a
+    /// `RDMA_BENCH_DEBUG` log of a hung run readable.
+    pub fn sync(&mut self, label: &str) -> Result<()> {
+        if !trace_enabled() {
+            self.write_stream.write_all(&[0u8])?;
+            let mut buf = [0u8; 1];
+            self.reader.read_exact(&mut buf)?;
+            return Ok(());
+        }
+
+        eprintln!("[sync] reached  {label}");
+        let t0 = Instant::now();
         self.write_stream.write_all(&[0u8])?;
         let mut buf = [0u8; 1];
-        self.reader.read_exact(&mut buf)?;
-        Ok(())
+        // The wait for the peer's byte is where a mispaired barrier hangs, so the time spent here
+        // is the interesting number: a barrier that took far longer than the peer's own work is a
+        // barrier the peer never reached.
+        match self.reader.read_exact(&mut buf) {
+            Ok(()) => {
+                eprintln!("[sync] passed   {label} (waited {:?})", t0.elapsed());
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("[sync] failed   {label} after {:?}: {e}", t0.elapsed());
+                Err(e.into())
+            }
+        }
     }
 }
 

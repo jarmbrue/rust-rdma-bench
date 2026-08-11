@@ -99,7 +99,7 @@ fn send(
 ) -> Result<Report> {
     let mut wc = vec![ibv_wc::default(); window];
 
-    conn.sync()?; // wait until the receiver has its receives posted
+    conn.sync("accuracy/sender: waiting for receives posted")?;
 
     for seq in 0..window {
         fill_payload(&mut mr[slot_range(seq, msg_size)], seq as u64);
@@ -126,7 +126,7 @@ fn send(
         }
     }
 
-    conn.sync()?; // "everything I was going to send has left the queue"
+    conn.sync("accuracy/sender: all sends completed")?;
     let report: AccuracyReport = conn.recv_msg()?;
     Ok(Report::Accuracy(report))
 }
@@ -145,7 +145,7 @@ fn receive(
     for slot in 0..window {
         unsafe { qp.post_receive(mr, slot_range(slot, msg_size), slot as u64)? };
     }
-    conn.sync()?; // "receives are posted, go ahead"
+    conn.sync("accuracy/receiver: receives posted")?;
 
     let mut expected = vec![0u8; msg_size];
     let mut seen = vec![false; iterations];
@@ -182,7 +182,7 @@ fn receive(
     }
     report.lost = seen.iter().filter(|s| !**s).count();
 
-    conn.sync()?; // meets the sender's post-send barrier
+    conn.sync("accuracy/receiver: checking done")?;
     conn.send_msg(&report)?;
     Ok(Report::Peer)
 }

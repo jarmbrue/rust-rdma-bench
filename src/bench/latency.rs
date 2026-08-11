@@ -95,7 +95,7 @@ fn ping(
 
     // The receive for the first echo has to be posted before the first send goes out.
     unsafe { qp.post_receive(recv_mr, .., WR_RECV)? };
-    conn.sync()?; // both sides have a receive posted
+    conn.sync("latency/ping: receive posted")?;
 
     for i in 0..iterations {
         let t0 = Instant::now();
@@ -123,7 +123,7 @@ fn ping(
         }
     }
 
-    conn.sync()?; // both sides done
+    conn.sync("latency/ping: round trips done")?;
     // A run where every round trip timed out is a result too — an empty one. Reporting it as such
     // rather than as an error keeps one dead size from aborting a whole sweep.
     Ok(Report::Latency(LatencyStats::from_samples(
@@ -144,7 +144,7 @@ fn pong(
     let mut echoed = 0usize;
 
     unsafe { qp.post_receive(recv_mr, .., WR_RECV)? };
-    conn.sync()?; // both sides have a receive posted
+    conn.sync("latency/pong: receive posted")?;
 
     for _ in 0..iterations {
         // A ping that never arrives means the client has either given up on that iteration or
@@ -161,7 +161,7 @@ fn pong(
         echoed += 1;
     }
 
-    conn.sync()?; // both sides done
+    conn.sync("latency/pong: echoing done")?;
     println!("echoed {echoed} of {iterations} messages");
     Ok(Report::Peer)
 }
