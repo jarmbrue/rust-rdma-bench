@@ -166,10 +166,22 @@ pub enum Mode {
     Bandwidth,
     Latency,
     Accuracy,
+    /// One-sided RDMA WRITE bandwidth. Only the responder side is implemented in this crate (see
+    /// `bench::rdma`) — the crates.io `ibverbs` 0.9.2 this crate is pinned to has no verb to
+    /// *initiate* one, so a `client` run picking this mode fails immediately. It's listed here
+    /// (and kept out of `ALL`) so `--mode rdma-write` parses and the wire `Mode` enum stays a
+    /// superset of what D3OS's client can ask this crate's server to serve.
+    RdmaWrite,
+    /// One-sided RDMA READ bandwidth, same caveat as `RdmaWrite`. Also unsupported on UC — only
+    /// RC has RDMA READ in its transport-service repertoire.
+    RdmaRead,
 }
 
 impl Mode {
-    /// Every mode, in the order a suite runs them.
+    /// Every mode a *client* run of this crate can actually drive, in the order a suite runs
+    /// them. `RdmaWrite`/`RdmaRead` are deliberately excluded: this crate's `ibverbs` pin can only
+    /// serve those, not initiate them (see the `Mode` doc comments), so a default sweep run
+    /// against a peer would just fail on both.
     pub const ALL: [Mode; 3] = [Mode::Bandwidth, Mode::Latency, Mode::Accuracy];
 
     pub fn name(&self) -> &'static str {
@@ -177,6 +189,8 @@ impl Mode {
             Mode::Bandwidth => "bandwidth",
             Mode::Latency => "latency",
             Mode::Accuracy => "accuracy",
+            Mode::RdmaWrite => "rdma-write",
+            Mode::RdmaRead => "rdma-read",
         }
     }
 

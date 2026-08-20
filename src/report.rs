@@ -151,7 +151,7 @@ impl Report {
 /// The column header for `mode`'s table, printed once per table rather than once per row.
 pub fn header(mode: Mode) -> String {
     match mode {
-        Mode::Bandwidth => format!(
+        Mode::Bandwidth | Mode::RdmaWrite | Mode::RdmaRead => format!(
             "{:>8}  {:>12}  {:>10}  {:>18}  {:>14}",
             "#bytes", "#iterations", "tx_depth", "BW avg[Gb/sec]", "MsgRate[Mpps]"
         ),

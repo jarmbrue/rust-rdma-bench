@@ -1,6 +1,7 @@
 pub mod accuracy;
 pub mod bandwidth;
 pub mod latency;
+pub mod rdma;
 
 use crate::cli::{Mode, Transport};
 use crate::comm::Conn;
@@ -28,12 +29,16 @@ pub enum Role {
 /// Whether `(transport, mode)` has an actual implementation, as opposed to a stub. Checked
 /// before any RDMA resources are built for a connection, so an unsupported combination can be
 /// rejected cleanly instead of failing partway through setup.
-pub fn supported(transport: Transport, _mode: Mode) -> bool {
-    match transport {
-        // Every mode works over both connected transports: the benchmarks are written to tolerate
-        // the loss UC allows, so none of them needs RC's guarantees.
-        Transport::Rc | Transport::Uc => true,
-        Transport::Ud => false,
+pub fn supported(transport: Transport, mode: Mode) -> bool {
+    match (transport, mode) {
+        (Transport::Ud, _) => false,
+        // RDMA READ is not in UC's transport-service repertoire (IBTA 1.2.1, table 44) — UC has
+        // RDMA WRITE but no read/atomics.
+        (Transport::Uc, Mode::RdmaRead) => false,
+        // Every other mode works over both connected transports: the SEND/RECV benchmarks are
+        // written to tolerate the loss UC allows, so none of them needs RC's guarantees, and RDMA
+        // WRITE degrades the same way SEND does on UC (no ack, no retransmit).
+        (Transport::Rc | Transport::Uc, _) => true,
     }
 }
 
@@ -67,5 +72,8 @@ pub fn run(
         Mode::Bandwidth => bandwidth::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),
         Mode::Latency => latency::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),
         Mode::Accuracy => accuracy::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth),
+        Mode::RdmaWrite | Mode::RdmaRead => {
+            rdma::run(pd, cq, qp, conn, role, msg_size, iterations, tx_depth)
+        }
     }
 }

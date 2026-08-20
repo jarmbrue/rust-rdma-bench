@@ -49,6 +49,28 @@ pub struct ClientEndpoint {
     pub endpoint: ibverbs::QueuePairEndpoint,
 }
 
+/// Mirrors D3OS's `ibverbs::RemoteMemoryRegion<u8>` field for field on the wire (including the
+/// `phantom` field, which that generic type carries only to remember `T`; ours is always `u8`, so
+/// it serializes to the same `null` a `PhantomData` does and there's nothing to remember). The
+/// crates.io `ibverbs` this crate is pinned to has no equivalent type — `MemoryRegion` only gives
+/// up a `RemoteKey`, not an address — so this is assembled by hand in `bench::rdma` from a
+/// `MemoryRegion`'s deref'd slice pointer/length plus `MemoryRegion::rkey`.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct RemoteMemoryRegion {
+    pub addr: u64,
+    pub len: usize,
+    pub rkey: u32,
+    pub phantom: (),
+}
+
+/// Sent from the rdma-write/rdma-read responder to the initiator once its buffer is registered,
+/// authorizing the initiator's HCA to write/read it directly without any further involvement from
+/// the responder's CPU.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RemoteBufferInfo {
+    pub remote: RemoteMemoryRegion,
+}
+
 /// What an accuracy run's receiver observed, sent back over the out-of-band connection once its
 /// drain loop finishes so the client — the side the user actually watches — can print the result.
 #[derive(Serialize, Deserialize, Debug, Default)]

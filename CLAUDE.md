@@ -34,14 +34,22 @@ ordering.
 
 ## Status
 
-| | Bandwidth | Latency | Accuracy |
-|---|---|---|---|
-| **RC** | done | done | done |
-| **UC** | done | done | done |
-| **UD** | — | — | — |
+| | Bandwidth | Latency | Accuracy | RDMA WRITE | RDMA READ |
+|---|---|---|---|---|---|
+| **RC** | done | done | done | responder only | responder only |
+| **UC** | done | done | done | responder only | unsupported |
+| **UD** | — | — | — | — | — |
 
 `bench::supported()` is the authority on this matrix and is checked during the handshake, so an
 unimplemented combination is rejected before any RDMA resources are built.
+
+RDMA WRITE/READ are one-sided: only the initiator's HCA produces a work completion, so `bench::rdma`
+only implements `Role::Server` (registering a buffer and handing out its address/rkey via
+`MemoryRegion::rkey`). This crate cannot *initiate* either op — crates.io `ibverbs` 0.9.2 has no
+`rdma_write`/`rdma_read` verb and keeps `QueuePair`'s raw `ibv_qp` pointer private, so there's no way
+to post one without forking that crate. D3OS's `os/library/ibverbs` is a from-scratch verbs
+reimplementation (not a fork of this crate's dependency) and does have both verbs, so D3OS is the
+only side that can act as client for these two modes today; this crate can only serve it.
 
 All six RC and UC combinations have been run between `ib1` and `ib2` on real hardware (Mellanox
 ConnectX-3), against the code as committed — no fixes were needed after the first hardware run.
