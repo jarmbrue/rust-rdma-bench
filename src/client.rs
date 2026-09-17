@@ -174,7 +174,7 @@ fn run_once(ctx: &Context, pd: &ProtectionDomain, params: &RunParams) -> Result<
         endpoint: local_endpoint,
     })?;
 
-    bench::run(
+    let report = bench::run(
         params.mode,
         pd,
         &cq,
@@ -184,5 +184,12 @@ fn run_once(ctx: &Context, pd: &ProtectionDomain, params: &RunParams) -> Result<
         params.size,
         params.iterations,
         params.tx_depth,
-    )
+    )?;
+
+    // The server is normally the passive side with no numbers of its own; hand it the CSV row so
+    // it can show the result too, on the ssh terminal a real ib1/ib2 run actually watches.
+    conn.send_msg(&comm::ResultRow {
+        row: report.csv_row(),
+    })?;
+    Ok(report)
 }

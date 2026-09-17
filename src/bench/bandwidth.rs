@@ -72,8 +72,6 @@ fn receive(
             "received {completed} of {iterations} messages ({} never arrived)",
             iterations - completed
         );
-    } else {
-        println!("received {completed} messages");
     }
     Ok(Report::Peer)
 }

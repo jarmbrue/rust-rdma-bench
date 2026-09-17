@@ -162,6 +162,8 @@ fn pong(
     }
 
     conn.sync("latency/pong: echoing done")?;
-    println!("echoed {echoed} of {iterations} messages");
+    if echoed != iterations {
+        println!("only echoed {echoed} of {iterations} messages");
+    }
     Ok(Report::Peer)
 }
