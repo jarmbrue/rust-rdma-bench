@@ -95,7 +95,11 @@ fn run_suite(
                 mode.min_msg_size()
             );
         }
-        println!("{}", report::header(mode));
+        if args.csv {
+            println!("{}", report::csv_header(mode));
+        } else {
+            println!("{}", report::header(mode));
+        }
 
         for size in sizes {
             // Every run after the first reconnects to a server that just finished one.
@@ -116,12 +120,19 @@ fn run_suite(
 
             match run_once(ctx, pd, &params) {
                 Ok(result) => {
-                    match result.row() {
-                        Some(row) => println!("{row}"),
-                        None => println!("{size:>8}  (no result)"),
-                    }
-                    if let Some(notes) = result.notes() {
-                        println!("{:>8}  {}", "", notes);
+                    if args.csv {
+                        match result.csv_row() {
+                            Some(row) => println!("{row}"),
+                            None => {println!("-")}
+                        }
+                    } else {
+                        match result.row() {
+                            Some(row) => println!("{row}"),
+                            None => println!("{size:>8}  (no result)"),
+                        }
+                        if let Some(notes) = result.notes() {
+                            println!("{:>8}  {}", "", notes);
+                        }
                     }
                 }
                 Err(e) => {

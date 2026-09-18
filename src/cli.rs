@@ -78,6 +78,10 @@ pub struct ClientArgs {
     /// Number of sends/receives allowed to be outstanding at once.
     #[arg(long, default_value_t = 32)]
     pub tx_depth: usize,
+
+    /// Print the results in csv format
+    #[arg(long, default_value_t = false)]
+    pub csv: bool
 }
 
 /// The benchmark matrix a client run expands to: every mode in `modes` once per entry in `sizes`.

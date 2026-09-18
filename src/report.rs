@@ -224,9 +224,9 @@ pub fn header(mode: Mode) -> String {
 pub fn csv_header(mode: Mode) -> String {
     match mode {
         Mode::Bandwidth | Mode::RdmaWrite | Mode::RdmaRead => {
-            "#bytes,#iterations,tx_depth,BW avg[Gb/sec],MsgRate[Mpps]".into()
+            "bytes,iterations,tx_depth,bw_avg,msgrate".into()
         }
-        Mode::Latency => "#bytes,#iterations,t_min[usec],t_max[usec],t_typical[usec],t_avg[usec],t_stdev[usec],99%[usec],99.9%[usec]".into(),
-        Mode::Accuracy => "#bytes,#iterations,#received,#lost,#dup,#corrupt,ByteAcc[%],BitAcc[%]".into(),
+        Mode::Latency => "bytes,iterations,t_min,t_max,t_typical,t_avg,t_stdev,99%,99.9%".into(),
+        Mode::Accuracy => "bytes,iterations,received,lost,dup,corrupt,byte_acc,bit_acc".into(),
     }
 }
