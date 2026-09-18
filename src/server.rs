@@ -1,9 +1,9 @@
 use crate::bench::{self, Role};
-use crate::cli::ServerArgs;
+use crate::cli::{Mode, ServerArgs};
 use crate::comm::{self, BenchmarkRequest, ClientEndpoint, Conn, HandshakeAck, ResultRow};
 use crate::device;
 use crate::error::Result;
-use crate::report;
+use crate::report::csv_header;
 use crate::transport;
 use ibverbs::{Context, ProtectionDomain};
 
@@ -11,11 +11,12 @@ pub fn run(args: ServerArgs) -> Result<()> {
     let ctx = device::open(args.device.as_deref())?;
     let pd = ctx.alloc_pd()?;
     let listener = comm::listen(args.port)?;
+    let mut last_mode: Option<Mode> = None;
 
     println!("listening on port {}", args.port);
     loop {
         let mut conn = comm::accept_one(&listener)?;
-        if let Err(e) = handle_connection(&ctx, &pd, &mut conn) {
+        if let Err(e) = handle_connection(&ctx, &pd, &mut conn, &mut last_mode) {
             eprintln!("connection error: {e}");
         }
 
@@ -27,7 +28,7 @@ pub fn run(args: ServerArgs) -> Result<()> {
     Ok(())
 }
 
-fn handle_connection(ctx: &Context, pd: &ProtectionDomain, conn: &mut Conn) -> Result<()> {
+fn handle_connection(ctx: &Context, pd: &ProtectionDomain, conn: &mut Conn, last_mode: &mut Option<Mode>) -> Result<()> {
     let req: BenchmarkRequest = conn.recv_msg()?;
 
     if !bench::supported(req.transport, req.mode) {
@@ -62,9 +63,14 @@ fn handle_connection(ctx: &Context, pd: &ProtectionDomain, conn: &mut Conn) -> R
         req.tx_depth,
     )?;
 
+
     let ResultRow { row } = conn.recv_msg()?;
     match row {
         Some(row) => {
+            let old = last_mode.replace(req.mode);
+            if  old.is_none() || old.unwrap() != req.mode {
+                println!("{}", csv_header(req.mode));
+            }
             println!("{row}");
         }
         None => println!("(no result)"),

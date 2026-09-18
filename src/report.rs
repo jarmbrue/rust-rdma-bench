@@ -219,3 +219,14 @@ pub fn header(mode: Mode) -> String {
     }
 }
 
+/// The column header for `mode`'s CSV row, matching `header()`'s columns but comma-separated and
+/// unpadded.
+pub fn csv_header(mode: Mode) -> String {
+    match mode {
+        Mode::Bandwidth | Mode::RdmaWrite | Mode::RdmaRead => {
+            "#bytes,#iterations,tx_depth,BW avg[Gb/sec],MsgRate[Mpps]".into()
+        }
+        Mode::Latency => "#bytes,#iterations,t_min[usec],t_max[usec],t_typical[usec],t_avg[usec],t_stdev[usec],99%[usec],99.9%[usec]".into(),
+        Mode::Accuracy => "#bytes,#iterations,#received,#lost,#dup,#corrupt,ByteAcc[%],BitAcc[%]".into(),
+    }
+}
