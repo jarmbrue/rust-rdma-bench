@@ -15,6 +15,7 @@ pub fn build<'res>(
     _pd: &'res ProtectionDomain<'res>,
     _cq: &'res CompletionQueue<'res>,
     _tx_depth: usize,
+    _rx_depth: usize,
 ) -> Result<PreparedQueuePair<'res>> {
     unimplemented!("UD transport not yet implemented (see module doc comment)")
 }

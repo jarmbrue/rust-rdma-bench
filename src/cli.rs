@@ -3,8 +3,9 @@ use serde::{Deserialize, Serialize};
 
 /// Bounds of the default message size sweep. The lower one is the smallest size accuracy mode can
 /// identify (it needs room for its 8-byte sequence-number header); the upper one is kept at 64 KiB
-/// because accuracy mode registers a `tx_depth`-slot buffer, so its memory region grows with the
-/// message size — sweeping higher is fine, but pair it with a smaller `--tx-depth`.
+/// because accuracy mode registers a `tx_depth`- or `rx_depth`-slot buffer (sender/receiver
+/// respectively), so its memory region grows with the message size — sweeping higher is fine, but
+/// pair it with a smaller `--tx-depth`/`--rx-depth`.
 const DEFAULT_MIN_SIZE: usize = 8;
 const DEFAULT_MAX_SIZE: usize = 1 << 17;
 
@@ -75,13 +76,19 @@ pub struct ClientArgs {
     #[arg(long, default_value_t = 1000)]
     pub iterations: usize,
 
-    /// Number of sends/receives allowed to be outstanding at once.
+    /// Number of sends allowed to be outstanding at once.
     #[arg(long, default_value_t = 32)]
     pub tx_depth: usize,
 
+    /// Number of receives allowed to be outstanding at once. Sizes every receive queue and every
+    /// benchmark's receive-side window (e.g. how many receive buffers a bandwidth/accuracy
+    /// receiver keeps posted).
+    #[arg(long, default_value_t = 128)]
+    pub rx_depth: usize,
+
     /// Print the results in csv format
     #[arg(long, default_value_t = false)]
-    pub csv: bool
+    pub csv: bool,
 }
 
 /// The benchmark matrix a client run expands to: every mode in `modes` once per entry in `sizes`.

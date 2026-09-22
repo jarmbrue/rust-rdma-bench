@@ -13,10 +13,11 @@ pub fn build<'res>(
     pd: &'res ProtectionDomain<'res>,
     cq: &'res CompletionQueue<'res>,
     tx_depth: usize,
+    rx_depth: usize,
 ) -> Result<PreparedQueuePair<'res>> {
     match transport {
-        Transport::Rc => rc::build(pd, cq, tx_depth),
-        Transport::Uc => uc::build(pd, cq, tx_depth),
-        Transport::Ud => ud::build(pd, cq, tx_depth),
+        Transport::Rc => rc::build(pd, cq, tx_depth, rx_depth),
+        Transport::Uc => uc::build(pd, cq, tx_depth, rx_depth),
+        Transport::Ud => ud::build(pd, cq, tx_depth, rx_depth),
     }
 }

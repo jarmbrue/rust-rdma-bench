@@ -32,6 +32,7 @@ struct RunParams<'a> {
     size: usize,
     iterations: usize,
     tx_depth: usize,
+    rx_depth: usize,
 }
 
 pub fn run(args: ClientArgs) -> Result<()> {
@@ -48,6 +49,7 @@ pub fn run(args: ClientArgs) -> Result<()> {
             size: plan.sizes[0],
             iterations: args.iterations,
             tx_depth: args.tx_depth,
+            rx_depth: args.rx_depth,
         };
         run_once(&ctx, &pd, &params)?.print(params.mode);
         return Ok(());
@@ -65,12 +67,14 @@ fn run_suite(
     plan: &crate::cli::Plan,
 ) -> Result<()> {
     println!(
-        "running {} mode(s) over {} message size(s), transport={:?}, iterations={}, tx_depth={}",
+        "running {} mode(s) over {} message size(s), transport={:?}, iterations={}, \
+         tx_depth={}, rx_depth={}",
         plan.modes.len(),
         plan.sizes.len(),
         args.transport,
         args.iterations,
-        args.tx_depth
+        args.tx_depth,
+        args.rx_depth
     );
     println!("(the peer must be running as `server --listen`)");
 
@@ -116,6 +120,7 @@ fn run_suite(
                 size,
                 iterations: args.iterations,
                 tx_depth: args.tx_depth,
+                rx_depth: args.rx_depth,
             };
 
             match run_once(ctx, pd, &params) {
@@ -123,7 +128,9 @@ fn run_suite(
                     if args.csv {
                         match result.csv_row() {
                             Some(row) => println!("{row}"),
-                            None => {println!("-")}
+                            None => {
+                                println!("-")
+                            }
                         }
                     } else {
                         match result.row() {
@@ -158,9 +165,9 @@ fn run_suite(
 /// Connects, handshakes and runs a single benchmark, leaving no RDMA or TCP resources behind, so
 /// the caller can invoke it repeatedly against a `--listen` server.
 fn run_once(ctx: &Context, pd: &ProtectionDomain, params: &RunParams) -> Result<Report> {
-    let cq = ctx.create_cq((2 * params.tx_depth) as i32, 0)?;
+    let cq = ctx.create_cq((params.tx_depth + params.rx_depth) as i32, 0)?;
 
-    let prepared = transport::build(params.transport, pd, &cq, params.tx_depth)?;
+    let prepared = transport::build(params.transport, pd, &cq, params.tx_depth, params.rx_depth)?;
     let local_endpoint = prepared.endpoint();
 
     let mut conn = comm::connect(params.host, params.port)?;
@@ -170,6 +177,7 @@ fn run_once(ctx: &Context, pd: &ProtectionDomain, params: &RunParams) -> Result<
         msg_size: params.size,
         iterations: params.iterations,
         tx_depth: params.tx_depth,
+        rx_depth: params.rx_depth,
     })?;
 
     let ack: HandshakeAck = conn.recv_msg()?;
@@ -195,6 +203,7 @@ fn run_once(ctx: &Context, pd: &ProtectionDomain, params: &RunParams) -> Result<
         params.size,
         params.iterations,
         params.tx_depth,
+        params.rx_depth,
     )?;
 
     // The server is normally the passive side with no numbers of its own; hand it the CSV row so

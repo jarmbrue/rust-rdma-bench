@@ -7,11 +7,12 @@ pub fn build<'res>(
     pd: &'res ProtectionDomain<'res>,
     cq: &'res CompletionQueue<'res>,
     tx_depth: usize,
+    rx_depth: usize,
 ) -> Result<PreparedQueuePair<'res>> {
     let prepared = pd
         .create_qp(cq, cq, ibverbs::ibv_qp_type::IBV_QPT_RC)
         .set_max_send_wr(tx_depth as u32)
-        .set_max_recv_wr(tx_depth as u32)
+        .set_max_recv_wr(rx_depth as u32)
         // Needed for rdma-write/rdma-read: without it the QP itself (as opposed to the memory
         // region's own access flags) rejects every incoming RDMA WRITE/READ with
         // IBV_WC_REM_INV_REQ_ERR, even though the target MR was registered with full remote

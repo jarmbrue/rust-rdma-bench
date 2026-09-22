@@ -27,6 +27,7 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
+    _rx_depth: usize,
 ) -> Result<Report> {
     if role == Role::Client {
         return Err(
@@ -38,7 +39,9 @@ pub fn run(
     }
 
     // Same formula the D3OS initiator uses to size its own local buffer, derived independently by
-    // both ends from parameters already in the `BenchmarkRequest` rather than exchanged.
+    // both ends from parameters already in the `BenchmarkRequest` rather than exchanged. This is
+    // sized from `tx_depth` (the initiator's outstanding-WRITE/READ depth), not `rx_depth`: the
+    // responder never posts a receive for a one-sided op, so it has no receive queue to size.
     let window = tx_depth.max(1).min(iterations);
     let mr = pd.allocate::<u8>(window * msg_size)?;
     let remote = RemoteMemoryRegion {

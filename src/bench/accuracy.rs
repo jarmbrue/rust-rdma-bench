@@ -36,6 +36,7 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
+    rx_depth: usize,
 ) -> Result<Report> {
     if iterations == 0 {
         return Err("accuracy benchmark needs at least one iteration".into());
@@ -50,8 +51,13 @@ pub fn run(
 
     // Every message in flight needs its own buffer: unlike the bandwidth mode the payloads differ
     // per message, so a slot must not be rewritten until its work request has completed. They all
-    // live in one memory region, addressed by sub-ranges, so registration happens once.
-    let window = tx_depth.max(1).min(iterations);
+    // live in one memory region, addressed by sub-ranges, so registration happens once. The
+    // window is sized from the depth that governs this side's queue: the sender's outstanding
+    // sends, the receiver's outstanding receives.
+    let window = match role {
+        Role::Client => tx_depth.max(1).min(iterations),
+        Role::Server => rx_depth.max(1).min(iterations),
+    };
     let mut mr = pd.allocate::<u8>(window * msg_size)?;
 
     match role {

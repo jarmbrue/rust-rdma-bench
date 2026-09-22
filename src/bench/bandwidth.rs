@@ -14,13 +14,14 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     tx_depth: usize,
+    rx_depth: usize,
 ) -> Result<Report> {
     // One buffer reused for every work request: this only measures throughput, so the messages
     // don't need distinct payloads.
     let mut mr = pd.allocate::<u8>(msg_size)?;
 
     match role {
-        Role::Server => receive(cq, qp, &mut mr, conn, iterations, tx_depth),
+        Role::Server => receive(cq, qp, &mut mr, conn, iterations, rx_depth),
         Role::Client => send(cq, qp, &mut mr, conn, msg_size, iterations, tx_depth),
     }
 }
@@ -31,15 +32,15 @@ fn receive(
     mr: &mut MemoryRegion<u8>,
     conn: &mut Conn,
     iterations: usize,
-    tx_depth: usize,
+    rx_depth: usize,
 ) -> Result<Report> {
-    let window = tx_depth.min(iterations);
+    let window = rx_depth.min(iterations);
     for i in 0..window {
         unsafe { qp.post_receive(mr, .., i as u64)? };
     }
     let mut posted = window;
     let mut completed = 0usize;
-    let mut wc = vec![ibv_wc::default(); tx_depth.max(1)];
+    let mut wc = vec![ibv_wc::default(); rx_depth.max(1)];
 
     conn.sync("bandwidth/receiver: receives posted")?;
     // On UC a dropped message produces no completion at all, so this cannot wait for a fixed

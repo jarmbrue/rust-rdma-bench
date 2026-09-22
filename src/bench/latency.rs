@@ -6,7 +6,7 @@
 //! latency, matching what perftest's `ib_send_lat` prints.
 //!
 //! This is deliberately stop-and-wait: exactly one message is in flight in each direction at any
-//! time, so `--tx-depth` does not apply here and is ignored.
+//! time, so neither `--tx-depth` nor `--rx-depth` applies here and both are ignored.
 //!
 //! Over UC either half of a round trip can vanish without a trace, which would otherwise leave
 //! both sides waiting forever, so each wait is bounded by `bench::IDLE_TIMEOUT`. A round trip that
@@ -35,6 +35,7 @@ pub fn run(
     msg_size: usize,
     iterations: usize,
     _tx_depth: usize,
+    _rx_depth: usize,
 ) -> Result<Report> {
     if iterations == 0 {
         return Err("latency benchmark needs at least one iteration".into());

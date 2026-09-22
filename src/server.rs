@@ -28,7 +28,12 @@ pub fn run(args: ServerArgs) -> Result<()> {
     Ok(())
 }
 
-fn handle_connection(ctx: &Context, pd: &ProtectionDomain, conn: &mut Conn, last_mode: &mut Option<Mode>) -> Result<()> {
+fn handle_connection(
+    ctx: &Context,
+    pd: &ProtectionDomain,
+    conn: &mut Conn,
+    last_mode: &mut Option<Mode>,
+) -> Result<()> {
     let req: BenchmarkRequest = conn.recv_msg()?;
 
     if !bench::supported(req.transport, req.mode) {
@@ -37,8 +42,8 @@ fn handle_connection(ctx: &Context, pd: &ProtectionDomain, conn: &mut Conn, last
         return Ok(());
     }
 
-    let cq = ctx.create_cq((2 * req.tx_depth) as i32, 0)?;
-    let prepared = transport::build(req.transport, pd, &cq, req.tx_depth)?;
+    let cq = ctx.create_cq((req.tx_depth + req.rx_depth) as i32, 0)?;
+    let prepared = transport::build(req.transport, pd, &cq, req.tx_depth, req.rx_depth)?;
     let local_endpoint = prepared.endpoint();
     conn.send_msg(&HandshakeAck::Ok {
         endpoint: local_endpoint,
@@ -61,14 +66,14 @@ fn handle_connection(ctx: &Context, pd: &ProtectionDomain, conn: &mut Conn, last
         req.msg_size,
         req.iterations,
         req.tx_depth,
+        req.rx_depth,
     )?;
-
 
     let ResultRow { row } = conn.recv_msg()?;
     match row {
         Some(row) => {
             let old = last_mode.replace(req.mode);
-            if  old.is_none() || old.unwrap() != req.mode {
+            if old.is_none() || old.unwrap() != req.mode {
                 println!("{}", csv_header(req.mode));
             }
             println!("{row}");

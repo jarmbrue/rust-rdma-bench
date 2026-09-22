@@ -18,11 +18,12 @@ pub fn build<'res>(
     pd: &'res ProtectionDomain<'res>,
     cq: &'res CompletionQueue<'res>,
     tx_depth: usize,
+    rx_depth: usize,
 ) -> Result<PreparedQueuePair<'res>> {
     let prepared = pd
         .create_qp(cq, cq, ibverbs::ibv_qp_type::IBV_QPT_UC)
         .set_max_send_wr(tx_depth as u32)
-        .set_max_recv_wr(tx_depth as u32)
+        .set_max_recv_wr(rx_depth as u32)
         // Needed for rdma-write (RDMA READ is unsupported on UC regardless — see
         // `bench::supported`); see the matching comment in `transport/rc.rs`.
         .allow_remote_rw()
