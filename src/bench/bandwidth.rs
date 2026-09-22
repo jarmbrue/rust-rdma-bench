@@ -95,6 +95,12 @@ fn send(
     for i in 0..window {
         unsafe { qp.post_send(mr, .., i as u64)? };
     }
+    let t_initial_posted = t0.elapsed();
+    eprintln!(
+        "[timing] posted initial window of {window} sends in {t_initial_posted:?} \
+         ({:?}/send)",
+        t_initial_posted / window.max(1) as u32
+    );
     let mut posted = window;
     let mut completed = 0usize;
     while completed < iterations {
@@ -112,6 +118,10 @@ fn send(
         }
     }
     let elapsed = t0.elapsed();
+    eprintln!(
+        "[timing] total {elapsed:?} for {iterations} sends (initial batch was {:.2}% of that)",
+        t_initial_posted.as_secs_f64() / elapsed.as_secs_f64() * 100.0
+    );
     conn.sync("bandwidth/sender: all sends completed")?;
 
     Ok(Report::Bandwidth(BandwidthStats {
