@@ -89,6 +89,9 @@ fn send(
     let mut wc = vec![ibv_wc::default(); tx_depth.max(1)];
 
     conn.sync("bandwidth/sender: waiting for receives posted")?;
+    // TEMP diagnostic: rust-perftest's client sleeps 100ms right before starting its timer,
+    // giving a freshly-RTS QP time to settle. Mirroring that here to rule in/out a cold-QP cost.
+    std::thread::sleep(std::time::Duration::from_millis(100));
     let t0 = Instant::now();
 
     let window = tx_depth.min(iterations);
@@ -103,9 +106,20 @@ fn send(
     );
     let mut posted = window;
     let mut completed = 0usize;
+    // TEMP diagnostic: histogram of how many completions each cq.poll() call returned, to see
+    // whether the HCA delivers them in bursts or one at a time.
+    let mut poll_calls = 0u64;
+    let mut empty_polls = 0u64;
+    let mut batch_counts: std::collections::BTreeMap<usize, u64> = std::collections::BTreeMap::new();
     while completed < iterations {
         let completions = cq.poll(&mut wc)?;
         let n = completions.len();
+        poll_calls += 1;
+        if n == 0 {
+            empty_polls += 1;
+        } else {
+            *batch_counts.entry(n).or_insert(0) += 1;
+        }
         for c in completions.iter() {
             completion_error(c)?;
         }
@@ -117,6 +131,10 @@ fn send(
             }
         }
     }
+    eprintln!(
+        "[timing] poll() calls: {poll_calls} total, {empty_polls} empty, batch-size histogram \
+         (completions_per_call -> num_calls): {batch_counts:?}"
+    );
     let elapsed = t0.elapsed();
     eprintln!(
         "[timing] total {elapsed:?} for {iterations} sends (initial batch was {:.2}% of that)",
