@@ -14,7 +14,7 @@
 //! can still be picked up by a subsequent iteration's wait and time that one too short; with loss
 //! rare enough for the latency figures to mean anything, so is this.
 
-use super::{IDLE_TIMEOUT, Role, WARMUP_ITERS, completion_error};
+use super::{IDLE_TIMEOUT, Role, WARMUP_SETTLE, completion_error};
 use crate::comm::Conn;
 use crate::error::Result;
 use crate::report::{LatencyStats, Report};
@@ -94,10 +94,11 @@ fn ping(
     let mut wc = [ibv_wc::default(); 2];
     let mut samples = Vec::with_capacity(iterations);
 
-    // The first `warmup` round trips are real but discarded: a freshly-RTS queue pair has a
-    // one-time settling cost (see `bandwidth::WARMUP_ITERS`'s doc comment for the fuller story),
-    // and without this it shows up as a single, wildly-outlying first sample here.
-    let warmup = WARMUP_ITERS.min(iterations);
+    // Warm-up: see `bench::WARMUP_SETTLE`'s doc comment. Without this, the queue pair's one-time
+    // settling cost shows up as a single, wildly-outlying first sample here.
+    conn.sync("latency/ping: warmup barrier")?;
+    std::thread::sleep(WARMUP_SETTLE);
+    conn.sync("latency/ping: warmup done")?;
 
     // The receive for the first echo has to be posted before the first send goes out.
     unsafe { qp.post_receive(recv_mr, .., WR_RECV)? };
@@ -120,9 +121,7 @@ fn ping(
             );
             break;
         }
-        if i >= warmup {
-            samples.push(t0.elapsed().as_secs_f64() * 1e6 / 2.0); // µs, half round trip
-        }
+        samples.push(t0.elapsed().as_secs_f64() * 1e6 / 2.0); // µs, half round trip
 
         // Repost before the next send, so the next echo can never arrive without a receive
         // waiting for it.
@@ -150,6 +149,11 @@ fn pong(
 ) -> Result<Report> {
     let mut wc = [ibv_wc::default(); 2];
     let mut echoed = 0usize;
+
+    // Warm-up: see ping()'s matching comment.
+    conn.sync("latency/pong: warmup barrier")?;
+    std::thread::sleep(WARMUP_SETTLE);
+    conn.sync("latency/pong: warmup done")?;
 
     unsafe { qp.post_receive(recv_mr, .., WR_RECV)? };
     conn.sync("latency/pong: receive posted")?;

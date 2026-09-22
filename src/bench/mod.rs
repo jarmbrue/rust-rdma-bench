@@ -19,16 +19,19 @@ use std::time::Duration;
 /// only ever fires on actual loss (or, on RC, on a hang that would otherwise be permanent).
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// How many messages a bandwidth/latency run exchanges and discards before starting the timed
-/// region.
+/// How long a bandwidth/latency run pauses, synchronized on both sides, right after the
+/// handshake before starting its timed region.
 ///
-/// A freshly-RTS queue pair has a one-time settling cost (observed, on the ib1/ib2 ConnectX-3
-/// hardware, to be large enough to swamp a short run's *entire* measured throughput rather than
-/// just its first sample — a bandwidth run with no warm-up looked ~8x slower and showed zero
-/// benefit from `--tx-depth`, both symptoms of the warm-up cost dominating instead of real
-/// steady-state behavior). Exchanging a small batch of real messages first and throwing the
-/// timing away absorbs that cost before it can be measured.
-pub const WARMUP_ITERS: usize = 32;
+/// A freshly-RTS queue pair has a one-time settling cost that, on the ib1/ib2 ConnectX-3
+/// hardware, was observed to swamp a short run's *entire* measured throughput rather than just
+/// its first sample (a bandwidth run with no warm-up looked ~8-15x slower and showed zero benefit
+/// from `--tx-depth`, both symptoms of this dominating instead of real steady-state behavior).
+/// This is a genuinely time-bound cost, not a "number of messages" one: a discarded warm-up batch
+/// bounded by queue depth (a few dozen to a few hundred messages) finishes in well under a
+/// millisecond even at the slow cold rate, nowhere near enough elapsed time to matter — only an
+/// actual pause of this rough magnitude fixed it in testing. `rust-perftest`'s client sleeps
+/// 100ms before starting its own timer for the same reason.
+pub const WARMUP_SETTLE: Duration = Duration::from_millis(100);
 
 /// Which side of the benchmark connection this process is playing.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
