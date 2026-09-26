@@ -73,7 +73,7 @@ formatting — is expected to match file for file.
 ## Layout
 
 - `src/cli.rs` — clap definitions; `Transport`/`Mode` enums are also the wire types. `plan()`
-  resolves the optional `--mode`/`--size` lists into the matrix a client run expands to.
+  resolves `--mode` and `--size`/`--all` into the matrix a client run expands to.
 - `src/comm.rs` — the wire types (`BenchmarkRequest`, endpoint exchange, `AccuracyReport`) and the
   `Conn::sync()` barrier both sides use to line up before and after a run.
 - `src/transport/{rc,uc,ud}.rs` — queue-pair construction per transport type.
@@ -104,9 +104,10 @@ request, so it can size the CQ from the client's `tx_depth`); only the device co
 opened once. `--listen` makes the server loop over connections; a failed run is reported and the
 loop continues.
 
-A client run is a *matrix* of (mode, size) pairs, not necessarily one benchmark: `--mode` and
-`--size` both take comma-separated lists, and left out entirely they mean "all three modes" and
-"every power of two from `--min-size` to `--max-size`". Each pair is an ordinary run on the wire —
+A client run is a *matrix* of (mode, size) pairs, not necessarily one benchmark: `--mode` takes a
+comma-separated list and left out means "all three modes"; `--size` is a single size (default
+4096), and `--all`/`-a` replaces it with every power of two from `--min-size` to `--max-size`
+(the two conflict). Each pair is an ordinary run on the wire —
 its own connection, CQ and QP, the same handshake — so the server never learns that a suite is
 happening; it just has to be running with `--listen`. `client::run_suite` prints one table per
 mode with a row per size, skips sizes below `Mode::min_msg_size()`, and reports a failing run in
@@ -162,8 +163,10 @@ Server first, then the client, which drives the run and prints the result table:
 cargo run -- server --listen
 # one benchmark
 cargo run -- client --host <server> --transport uc --mode accuracy --size 4096 --iterations 10000
-# the whole suite: every mode, every power of two from 8 B to 64 KiB
+# every mode at the default 4096 B
 cargo run -- client --host <server> --transport uc
+# the whole suite: every mode, every power of two from 8 B to 128 KiB
+cargo run -- client --host <server> --transport uc --all
 ```
 
 The `ib1` and `ib2` git remotes are the InfiniBand-equipped test machines; work is pushed to both

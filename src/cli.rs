@@ -2,12 +2,13 @@ use clap::{Args, Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
 
 /// Bounds of the default message size sweep. The lower one is the smallest size accuracy mode can
-/// identify (it needs room for its 8-byte sequence-number header); the upper one is kept at 64 KiB
+/// identify (it needs room for its 8-byte sequence-number header); the upper one is kept at 128 KiB
 /// because accuracy mode registers a `tx_depth`- or `rx_depth`-slot buffer (sender/receiver
 /// respectively), so its memory region grows with the message size — sweeping higher is fine, but
 /// pair it with a smaller `--tx-depth`/`--rx-depth`.
 const DEFAULT_MIN_SIZE: usize = 8;
 const DEFAULT_MAX_SIZE: usize = 1 << 17;
+const DEFAULT_SIZE: usize = 4096;
 
 #[derive(Parser, Debug)]
 #[command(name = "rust-rdma-bench")]
@@ -34,10 +35,10 @@ pub struct ServerArgs {
     pub listen: bool,
 }
 
-/// `--mode` and `--size` both take lists, and left out entirely they mean "everything": all three
-/// modes, and every power of two from `--min-size` to `--max-size`. So a client given neither runs
-/// the complete suite. Since every (mode, size) pair opens its own connection, anything but a
-/// single run needs the peer started as `server --listen`.
+/// `--mode` takes a list and left out means all three modes; `--size` is a single message size, and
+/// `--all` swaps it for every power of two from `--min-size` to `--max-size`. So a client given
+/// only `--all` runs the complete suite. Since every (mode, size) pair opens its own connection,
+/// anything but a single run needs the peer started as `server --listen`.
 #[derive(Args, Debug)]
 pub struct ClientArgs {
     /// Server address to connect to.
@@ -59,10 +60,13 @@ pub struct ClientArgs {
     #[arg(long, value_enum, value_delimiter = ',')]
     pub mode: Vec<Mode>,
 
-    /// Message sizes in bytes, comma-separated. Left out, the sweep between --min-size and
-    /// --max-size is used instead.
-    #[arg(long, value_delimiter = ',')]
-    pub size: Vec<usize>,
+    /// Message size in bytes.
+    #[arg(long, default_value_t = DEFAULT_SIZE)]
+    pub size: usize,
+
+    /// Run every power-of-two size from --min-size to --max-size instead of just --size.
+    #[arg(short = 'a', long, conflicts_with = "size")]
+    pub all: bool,
 
     /// Lower bound of the default power-of-two size sweep.
     #[arg(long, default_value_t = DEFAULT_MIN_SIZE)]
@@ -121,16 +125,13 @@ impl ClientArgs {
             self.mode.clone()
         };
 
-        let sizes = if self.size.is_empty() {
+        let sizes = if self.all {
             power_of_two_sizes(self.min_size, self.max_size)?
         } else {
-            let mut sizes = self.size.clone();
-            sizes.sort_unstable();
-            sizes.dedup();
-            if sizes.first() == Some(&0) {
+            if self.size == 0 {
                 return Err("--size must be greater than zero".into());
             }
-            sizes
+            vec![self.size]
         };
 
         Ok(Plan { modes, sizes })
