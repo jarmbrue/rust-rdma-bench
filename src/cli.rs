@@ -1,4 +1,3 @@
-use std::cmp::Ord;
 use clap::{Args, Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind, Result};
