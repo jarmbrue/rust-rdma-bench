@@ -161,7 +161,10 @@ fn pong(
     conn.sync("latency/pong: receive posted")?;
 
     for _ in 0..iterations {
-        wait_for(cq, &mut wc, WR_RECV, IDLE_TIMEOUT)?;
+        if let Err(e) = wait_for(cq, &mut wc, WR_RECV, IDLE_TIMEOUT) {
+            eprintln!("Error: {e}");
+            break;
+        }
         unsafe { qp.post_send(send_mr, .., WR_SEND)? };
         unsafe { qp.post_receive(recv_mr, .., WR_RECV)? };
         echoed += 1;
