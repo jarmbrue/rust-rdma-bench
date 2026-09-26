@@ -123,28 +123,27 @@ fn run_suite(
                 rx_depth: args.rx_depth,
             };
 
-            match run_once(ctx, pd, &params) {
-                Ok(result) => {
-                    if args.csv {
-                        match result.csv_row() {
-                            Some(row) => println!("{row}"),
-                            None => {
-                                println!("-")
+            for _ in 0..args.runs {
+                match run_once(ctx, pd, &params) {
+                    Ok(result) => {
+                        if args.csv {
+                            if let Some(row) = result.csv_row() {
+                                println!("{row}");
+                            }
+                        } else {
+                            match result.row() {
+                                Some(row) => println!("{row}"),
+                                None => println!("{size:>8}  (no result)"),
+                            }
+                            if let Some(notes) = result.notes() {
+                                println!("{:>8}  {}", "", notes);
                             }
                         }
-                    } else {
-                        match result.row() {
-                            Some(row) => println!("{row}"),
-                            None => println!("{size:>8}  (no result)"),
-                        }
-                        if let Some(notes) = result.notes() {
-                            println!("{:>8}  {}", "", notes);
-                        }
                     }
-                }
-                Err(e) => {
-                    println!("{size:>8}  failed: {e}");
-                    failures.push((mode, size));
+                    Err(e) => {
+                        println!("{size:>8}  failed: {e}");
+                        failures.push((mode, size));
+                    }
                 }
             }
         }
