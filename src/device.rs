@@ -1,5 +1,5 @@
-use crate::error::Result;
 use ibverbs::{Context, DeviceList};
+use std::io::{Error, ErrorKind, Result};
 
 /// Opens an RDMA device context, either the one matching `name` or the first one available.
 pub fn open(name: Option<&str>) -> Result<Context> {
@@ -13,9 +13,17 @@ pub fn open(name: Option<&str>) -> Result<Context> {
                     .map(|n| n.to_string_lossy().as_ref() == name)
                     .unwrap_or(false)
             })
-            .ok_or_else(|| format!("no RDMA device named '{name}' found"))?,
-        None => devices.iter().next().ok_or("no RDMA device available")?,
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::NotFound,
+                    format!("no RDMA device named '{name}' found"),
+                )
+            })?,
+        None => devices
+            .iter()
+            .next()
+            .ok_or(Error::new(ErrorKind::NotFound, "no RDMA device available"))?,
     };
 
-    Ok(device.open()?)
+    device.open()
 }

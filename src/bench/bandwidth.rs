@@ -1,8 +1,8 @@
 use super::{Role, WARMUP_SETTLE, completion_error};
 use crate::comm::Conn;
-use crate::error::Result;
 use crate::report::{BandwidthStats, Report};
 use ibverbs::{CompletionQueue, MemoryRegion, ProtectionDomain, QueuePair, ibv_wc};
+use std::io::Result;
 use std::time::Instant;
 
 pub fn run(

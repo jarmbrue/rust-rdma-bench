@@ -1,5 +1,6 @@
 use clap::{Args, Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
+use std::io::{Error, ErrorKind, Result};
 
 /// Bounds of the default message size sweep. The lower one is the smallest size accuracy mode can
 /// identify (it needs room for its 8-byte sequence-number header); the upper one is kept at 128 KiB
@@ -114,9 +115,12 @@ impl Plan {
 
 impl ClientArgs {
     /// Resolves the CLI's optional lists into the matrix to actually run.
-    pub fn plan(&self) -> Result<Plan, String> {
+    pub fn plan(&self) -> Result<Plan> {
         if self.iterations == 0 {
-            return Err("--iterations must be greater than zero".into());
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "--iterations must be greater than zero",
+            ));
         }
 
         let modes = if self.mode.is_empty() {
@@ -129,7 +133,10 @@ impl ClientArgs {
             power_of_two_sizes(self.min_size, self.max_size)?
         } else {
             if self.size == 0 {
-                return Err("--size must be greater than zero".into());
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "--size must be greater than zero",
+                ));
             }
             vec![self.size]
         };
@@ -140,12 +147,18 @@ impl ClientArgs {
 
 /// Powers of two from the first one at or above `min` up to the last one at or below `max`.
 /// Non-power-of-two bounds are rounded inwards, so `4000..=100000` sweeps 4096..=65536.
-fn power_of_two_sizes(min: usize, max: usize) -> Result<Vec<usize>, String> {
+fn power_of_two_sizes(min: usize, max: usize) -> Result<Vec<usize>> {
     if min == 0 {
-        return Err("--min-size must be greater than zero".into());
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "--min-size must be greater than zero",
+        ));
     }
     if max < min {
-        return Err("--max-size must not be smaller than --min-size".into());
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "--max-size must not be smaller than --min-size",
+        ));
     }
 
     let mut sizes = Vec::new();
@@ -159,8 +172,9 @@ fn power_of_two_sizes(min: usize, max: usize) -> Result<Vec<usize>, String> {
     }
 
     if sizes.is_empty() {
-        return Err(format!(
-            "no power-of-two message size lies between {min} and {max}"
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            format!("no power-of-two message size lies between {min} and {max}"),
         ));
     }
     Ok(sizes)

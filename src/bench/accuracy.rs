@@ -16,9 +16,9 @@
 
 use super::{IDLE_TIMEOUT, Role, completion_error};
 use crate::comm::{AccuracyReport, Conn};
-use crate::error::Result;
 use crate::report::Report;
 use ibverbs::{CompletionQueue, MemoryRegion, ProtectionDomain, QueuePair, ibv_wc};
+use std::io::{Error, ErrorKind, Result};
 use std::ops::Range;
 use std::time::Instant;
 
@@ -39,14 +39,19 @@ pub fn run(
     rx_depth: usize,
 ) -> Result<Report> {
     if iterations == 0 {
-        return Err("accuracy benchmark needs at least one iteration".into());
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "accuracy benchmark needs at least one iteration",
+        ));
     }
     if msg_size < HEADER_LEN {
-        return Err(format!(
-            "accuracy benchmark needs a message size of at least {HEADER_LEN} bytes for the \
-             sequence-number header"
-        )
-        .into());
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            format!(
+                "accuracy benchmark needs a message size of at least {HEADER_LEN} bytes for the \
+                 sequence-number header"
+            ),
+        ));
     }
 
     // Every message in flight needs its own buffer: unlike the bandwidth mode the payloads differ

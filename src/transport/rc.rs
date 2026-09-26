@@ -1,5 +1,5 @@
-use crate::error::Result;
 use ibverbs::{CompletionQueue, PreparedQueuePair, ProtectionDomain};
+use std::io::Result;
 
 /// Builds an RC queue pair with the given send/receive depth, ready to be handed a remote
 /// endpoint via `PreparedQueuePair::handshake`.

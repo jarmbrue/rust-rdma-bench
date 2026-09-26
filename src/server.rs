@@ -2,10 +2,10 @@ use crate::bench::{self, Role};
 use crate::cli::{Mode, ServerArgs};
 use crate::comm::{self, BenchmarkRequest, ClientEndpoint, Conn, HandshakeAck, ResultRow};
 use crate::device;
-use crate::error::Result;
 use crate::report::csv_header;
 use crate::transport;
 use ibverbs::{Context, ProtectionDomain};
+use std::io::Result;
 
 pub fn run(args: ServerArgs) -> Result<()> {
     let ctx = device::open(args.device.as_deref())?;

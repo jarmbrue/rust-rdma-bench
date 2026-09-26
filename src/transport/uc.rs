@@ -9,8 +9,8 @@
 //! fabric drops is gone silently, with no completion on either side to mark it. Every benchmark
 //! that waits on a peer therefore has to bound that wait — see `bench::IDLE_TIMEOUT`.
 
-use crate::error::Result;
 use ibverbs::{CompletionQueue, PreparedQueuePair, ProtectionDomain};
+use std::io::Result;
 
 /// Builds a UC queue pair with the given send/receive depth, ready to be handed a remote endpoint
 /// via `PreparedQueuePair::handshake`.

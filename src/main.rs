@@ -3,7 +3,6 @@ mod cli;
 mod client;
 mod comm;
 mod device;
-mod error;
 mod report;
 mod server;
 mod transport;

@@ -14,9 +14,9 @@
 
 use super::Role;
 use crate::comm::{Conn, RemoteBufferInfo, RemoteMemoryRegion};
-use crate::error::Result;
 use crate::report::Report;
 use ibverbs::{CompletionQueue, ProtectionDomain, QueuePair};
+use std::io::{Error, ErrorKind, Result};
 
 pub fn run(
     pd: &ProtectionDomain,
@@ -30,12 +30,12 @@ pub fn run(
     _rx_depth: usize,
 ) -> Result<Report> {
     if role == Role::Client {
-        return Err(
+        return Err(Error::new(
+            ErrorKind::Unsupported,
             "this build of rust-rdma-bench cannot initiate RDMA WRITE/READ (crates.io \
             ibverbs 0.9.2 has no rdma_write/rdma_read verb); run this mode with D3OS as the \
-            client instead"
-                .into(),
-        );
+            client instead",
+        ));
     }
 
     // Same formula the D3OS initiator uses to size its own local buffer, derived independently by

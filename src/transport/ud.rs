@@ -8,8 +8,8 @@
 //! and adding AH/UD send support, either upstream in rust-ibverbs or via raw `ffi::` calls from
 //! this crate — out of scope for now.
 
-use crate::error::Result;
 use ibverbs::{CompletionQueue, PreparedQueuePair, ProtectionDomain};
+use std::io::Result;
 
 pub fn build<'res>(
     _pd: &'res ProtectionDomain<'res>,

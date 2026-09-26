@@ -3,8 +3,8 @@ pub mod uc;
 pub mod ud;
 
 use crate::cli::Transport;
-use crate::error::Result;
 use ibverbs::{CompletionQueue, PreparedQueuePair, ProtectionDomain};
+use std::io::Result;
 
 /// Builds a queue pair of the requested transport type, ready to be handshaked with a remote
 /// endpoint.

@@ -5,9 +5,9 @@ pub mod rdma;
 
 use crate::cli::{Mode, Transport};
 use crate::comm::Conn;
-use crate::error::Result;
 use crate::report::Report;
 use ibverbs::{CompletionQueue, ProtectionDomain, QueuePair, ibv_wc};
+use std::io::{Error, Result};
 use std::time::Duration;
 
 /// How long a poll loop keeps spinning without seeing a completion before it gives up and treats
@@ -59,7 +59,9 @@ pub fn supported(transport: Transport, mode: Mode) -> bool {
 /// Turns a failed work completion into an error; successful ones pass through.
 pub fn completion_error(wc: &ibv_wc) -> Result<()> {
     if let Some((status, vendor_err)) = wc.error() {
-        return Err(format!("WC error: {status:?} vendor_err={vendor_err}").into());
+        return Err(Error::other(format!(
+            "WC error: {status:?} vendor_err={vendor_err}"
+        )));
     }
     Ok(())
 }

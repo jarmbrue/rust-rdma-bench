@@ -3,10 +3,9 @@
 //! native `rust-rdma-bench` peer can run a benchmark against each other.
 
 use crate::cli::{Mode, Transport};
-use crate::error::Result;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Error, ErrorKind, Read, Result, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::OnceLock;
 use std::time::Instant;
@@ -135,7 +134,10 @@ impl Conn {
         let mut line = String::new();
         self.reader.read_line(&mut line)?;
         if line.is_empty() {
-            return Err("peer closed the connection while waiting for a message".into());
+            return Err(Error::new(
+                ErrorKind::UnexpectedEof,
+                "peer closed the connection while waiting for a message",
+            ));
         }
         Ok(serde_json::from_str(&line)?)
     }
@@ -168,14 +170,14 @@ impl Conn {
             }
             Err(e) => {
                 eprintln!("[sync] failed   {label} after {:?}: {e}", t0.elapsed());
-                Err(e.into())
+                Err(e)
             }
         }
     }
 }
 
 pub fn listen(port: u16) -> Result<TcpListener> {
-    Ok(TcpListener::bind(("0.0.0.0", port))?)
+    TcpListener::bind(("0.0.0.0", port))
 }
 
 pub fn accept_one(listener: &TcpListener) -> Result<Conn> {

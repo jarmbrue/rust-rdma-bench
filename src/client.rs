@@ -12,10 +12,10 @@ use crate::bench::{self, Role};
 use crate::cli::{ClientArgs, Mode, Transport};
 use crate::comm::{self, BenchmarkRequest, ClientEndpoint, HandshakeAck};
 use crate::device;
-use crate::error::Result;
 use crate::report::{self, Report};
 use crate::transport;
 use ibverbs::{Context, ProtectionDomain};
+use std::io::{Error, ErrorKind, Result};
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -183,7 +183,10 @@ fn run_once(ctx: &Context, pd: &ProtectionDomain, params: &RunParams) -> Result<
     let ack: HandshakeAck = conn.recv_msg()?;
     let remote_endpoint = match ack {
         HandshakeAck::Unsupported(reason) => {
-            return Err(format!("server rejected benchmark request: {reason}").into());
+            return Err(Error::new(
+                ErrorKind::Unsupported,
+                format!("server rejected benchmark request: {reason}"),
+            ));
         }
         HandshakeAck::Ok { endpoint } => endpoint,
     };
