@@ -1,3 +1,4 @@
+use std::cmp::Ord;
 use clap::{Args, Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind, Result};
@@ -94,6 +95,10 @@ pub struct ClientArgs {
     /// Print the results in csv format
     #[arg(long, default_value_t = false)]
     pub csv: bool,
+
+    /// Print the results in csv format
+    #[arg(long, default_value_t = 1, min = 1)]
+    pub runs: u32,
 }
 
 /// The benchmark matrix a client run expands to: every mode in `modes` once per entry in `sizes`.
