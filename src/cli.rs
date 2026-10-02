@@ -95,8 +95,8 @@ pub struct ClientArgs {
     #[arg(long, default_value_t = false)]
     pub csv: bool,
 
-    /// Print the results in csv format
-    #[arg(long, default_value_t = 1)]
+    /// Number of times to repeat every (mode, size) run, one result row each.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
     pub runs: u32,
 }
 
@@ -110,20 +110,34 @@ pub struct Plan {
 }
 
 impl Plan {
-    /// Whether this is a single explicit benchmark rather than a sweep — the two are reported
-    /// differently.
-    pub fn is_single_run(&self) -> bool {
+    /// Whether this is a single (mode, size) pair rather than a sweep. On its own that doesn't
+    /// make it a single run — `--runs` can still repeat it — see `ClientArgs::is_single_run`.
+    pub fn is_single_pair(&self) -> bool {
         self.modes.len() == 1 && self.sizes.len() == 1
     }
 }
 
 impl ClientArgs {
+    /// Whether `plan` amounts to exactly one benchmark printed as a standalone table. Repeats
+    /// and CSV output both need the suite path's one-header-many-rows layout instead.
+    pub fn is_single_run(&self, plan: &Plan) -> bool {
+        plan.is_single_pair() && self.runs == 1 && !self.csv
+    }
+
     /// Resolves the CLI's optional lists into the matrix to actually run.
     pub fn plan(&self) -> Result<Plan> {
         if self.iterations == 0 {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "--iterations must be greater than zero",
+            ));
+        }
+        // A zero send window never posts anything, so the sender's poll loop would spin forever
+        // waiting for completions that cannot come; a zero receive window drops every message.
+        if self.tx_depth == 0 || self.rx_depth == 0 {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "--tx-depth and --rx-depth must be greater than zero",
             ));
         }
 

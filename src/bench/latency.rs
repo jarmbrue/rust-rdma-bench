@@ -113,7 +113,6 @@ fn ping(
 
     // The receive for the first echo has to be posted before the first send goes out.
     unsafe { qp.post_receive(recv_mr, .., WR_RECV)? };
-    unsafe { qp.post_receive(recv_mr, .., WR_RECV)? };
     conn.sync("latency/ping: receive posted")?;
 
     for i in 0..iterations {

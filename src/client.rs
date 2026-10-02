@@ -40,7 +40,7 @@ pub fn run(args: ClientArgs) -> Result<()> {
     let ctx = device::open(args.device.as_deref())?;
     let pd = ctx.alloc_pd()?;
 
-    if plan.is_single_run() {
+    if args.is_single_run(&plan) {
         let params = RunParams {
             host: &args.host,
             port: args.port,
@@ -106,12 +106,6 @@ fn run_suite(
         }
 
         for size in sizes {
-            // Every run after the first reconnects to a server that just finished one.
-            if !first_run {
-                sleep(SETTLE);
-            }
-            first_run = false;
-
             let params = RunParams {
                 host: &args.host,
                 port: args.port,
@@ -124,6 +118,13 @@ fn run_suite(
             };
 
             for _ in 0..args.runs {
+                // Every run after the first reconnects to a server that just finished one —
+                // including repeats of the same (mode, size) pair under `--runs`.
+                if !first_run {
+                    sleep(SETTLE);
+                }
+                first_run = false;
+
                 match run_once(ctx, pd, &params) {
                     Ok(result) => {
                         if args.csv {
@@ -164,6 +165,18 @@ fn run_suite(
 /// Connects, handshakes and runs a single benchmark, leaving no RDMA or TCP resources behind, so
 /// the caller can invoke it repeatedly against a `--listen` server.
 fn run_once(ctx: &Context, pd: &ProtectionDomain, params: &RunParams) -> Result<Report> {
+    // The server checks this too, but only after the client has already built its own queue pair
+    // — and building a UD one panics (see `transport::ud`). Rejecting here keeps that path clean.
+    if !bench::supported(params.transport, params.mode) {
+        return Err(Error::new(
+            ErrorKind::Unsupported,
+            format!(
+                "{:?}/{:?} is not implemented yet",
+                params.transport, params.mode
+            ),
+        ));
+    }
+
     let cq = ctx.create_cq((params.tx_depth + params.rx_depth) as i32, 0)?;
 
     let prepared = transport::build(params.transport, pd, &cq, params.tx_depth, params.rx_depth)?;
